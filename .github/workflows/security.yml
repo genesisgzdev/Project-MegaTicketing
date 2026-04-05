@@ -15,8 +15,9 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: 'npm'
       - name: Install dependencies
-        run: npm install
+        run: npm ci
       - name: Run Snyk SCA
         uses: snyk/actions/node@master
         env:
@@ -29,5 +30,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Run OSV-Scanner
-        run: |
-          docker run --rm -v $(pwd):/src ghcr.io/google/osv-scanner:latest /src
+        uses: google/osv-scanner-action/scan@v1
+        with:
+          scan-args: |-
+            --recursive
+            ./

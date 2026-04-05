@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: megaticketing-api
+  namespace: default
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: megaticketing-api
+  template:
+    metadata:
+      labels:
+        app: megaticketing-api
+    spec:
+      containers:
+      - name: api
+        image: gcr.io/genesisgzdev-project/mega-ticketing-api:latest
+        ports:
+        - containerPort: 3001
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "256Mi"
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+        env:
+        - name: NODE_ENV
+          value: "production"
+        - name: PORT
+          value: "3001"
+        - name: REDIS_HOST
+          value: "redis-service"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: megaticketing-api-service
+spec:
+  type: ClusterIP
+  selector:
+    app: megaticketing-api
+  ports:
+  - port: 80
+    targetPort: 3001
