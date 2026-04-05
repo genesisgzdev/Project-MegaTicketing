@@ -9,7 +9,7 @@ export const getSystemHealth = async () => {
   try {
     // Real security scan in background
     const projectRoot = path.join(__dirname, '../../..');
-    const scannerPath = 'C:\\Users\\Genesisif\\.gemini\\extensions\\gemini-cli-security\\osv-scanner.exe';
+    const scannerPath = process.env.OSV_SCANNER_PATH || 'osv-scanner';
     
     // We run a quick check on package.json
     const { stdout } = await execAsync(`${scannerPath} scan source -r ${projectRoot} --format json`);
