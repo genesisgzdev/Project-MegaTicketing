@@ -24,12 +24,11 @@ jobs:
         run: npm run db:generate --prefix packages/database
 
       - name: Run Snyk SCA (Monorepo Mode)
-        continue-on-error: true
         run: |
           npm install -g snyk
           if [ -n "${{ secrets.SNYK_TOKEN }}" ]; then
             snyk auth ${{ secrets.SNYK_TOKEN }}
-            snyk test --all-projects --severity-threshold=high || true
+            snyk test --all-projects --severity-threshold=high
           else
             echo "Skipping Snyk scan due to missing token."
           fi
