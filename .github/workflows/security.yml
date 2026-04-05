@@ -21,13 +21,16 @@ jobs:
       - name: Install dependencies
         run: npm ci || npm install --no-package-lock
         
-      - name: Run Snyk to check for vulnerabilities
-        uses: snyk/actions/node@master
-        continue-on-error: true
+      - name: Setup Snyk
+        uses: snyk/actions/setup@master
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-        with:
-          args: --all-projects --severity-threshold=high --sarif-file-output=snyk.sarif
+
+      - name: Run Snyk SCA
+        run: |
+          snyk test --all-projects --severity-threshold=high --sarif-file-output=snyk.sarif || true
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
 
       - name: Upload Snyk report to GitHub Security
         uses: github/codeql-action/upload-sarif@v3
