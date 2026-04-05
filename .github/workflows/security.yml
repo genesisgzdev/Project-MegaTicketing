@@ -16,15 +16,25 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'npm'
 
       - name: Install Monorepo Dependencies
-        run: npm install --no-package-lock
+        run: npm install --legacy-peer-deps
         
       - name: Generate Database Client
         run: npm run db:generate --prefix packages/database
 
+      - name: Verify Secrets
+        id: check_secrets
+        run: |
+          if [ -z "${{ secrets.SNYK_TOKEN }}" ]; then
+            echo "::warning::SNYK_TOKEN is missing. Skipping Snyk scan."
+            echo "skip=true" >> $GITHUB_OUTPUT
+          else
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: Run Snyk SCA (Monorepo Mode)
+        if: steps.check_secrets.outputs.skip == 'false'
         uses: snyk/actions/node@master
         continue-on-error: true
         env:
@@ -33,10 +43,22 @@ jobs:
           args: --all-projects --severity-threshold=high --sarif-file-output=snyk.sarif
 
       - name: Upload Snyk report to GitHub Security
+        if: steps.check_secrets.outputs.skip == 'false'
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: snyk.sarif
-        if: always()
+
+  osv-scanner:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run OSV-Scanner
+        uses: google/osv-scanner-action/scan@v1
+        continue-on-error: true
+        with:
+          scan-args: |-
+            --recursive
+            ./
 
   smoke-test:
     runs-on: ubuntu-latest
@@ -46,7 +68,7 @@ jobs:
       - name: Build and Run Cluster
         run: |
           docker compose up -d --build
-          sleep 30
+          sleep 20
       - name: Performance & Consistency Load Test
         run: |
           npx autocannon -c 20 -d 5 -m POST \

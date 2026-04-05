@@ -3,7 +3,8 @@ WORKDIR /usr/src/app
 COPY package*.json ./
 COPY apps/web/package*.json ./apps/web/
 COPY packages/shared/package*.json ./packages/shared/
-RUN npm install
+# FIX: Industrial dependency resolution bypass
+RUN npm install --legacy-peer-deps
 COPY . .
 RUN npm run build --prefix apps/web
 
