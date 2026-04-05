@@ -1,57 +1,81 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
-import jwt from '@fastify/jwt';
+import websocket from '@fastify/websocket';
+import rateLimit from '@fastify/rate-limit';
 import { z } from 'zod';
+import { lockSeat, releaseSeat } from './redis';
+import { db } from './db';
+import { createPaymentIntent } from './payments';
+import { getSystemHealth, watchFiles } from './game-state';
 
-const server = Fastify({
-  logger: true
-});
+const server = Fastify({ logger: true });
 
-// Plugins
 server.register(cors);
-server.register(jwt, {
-  secret: process.env.JWT_SECRET || 'super-secret-key-for-dev'
+server.register(websocket);
+
+// Rate Limiter (The Defense Shield)
+let defenseActive = false;
+server.register(rateLimit, {
+  max: 100,
+  timeWindow: '1 minute',
+  skip: () => !defenseActive // Only limit if defense is active
 });
 
-// Validation Schemas
-const ReserveSeatSchema = z.object({
-  eventId: z.string().uuid(),
-  seatId: z.string(),
-  userId: z.string()
+const broadcast = (data: any) => {
+  server.websocketServer.clients.forEach((client) => {
+    if (client.readyState === 1) client.send(JSON.stringify(data));
+  });
+};
+
+// Attack Monitoring logic
+let requestCount = 0;
+server.addHook('onRequest', async (request, reply) => {
+  requestCount++;
 });
 
-// Routes
-server.get('/health', async () => {
-  return { status: 'ok', timestamp: new Date().toISOString() };
+setInterval(() => {
+  if (requestCount > 50) { // Threshold for "Boss Battle"
+    broadcast({ type: 'ATTACK_STATUS', status: 'ATTACK', intensity: requestCount });
+  } else {
+    broadcast({ type: 'ATTACK_STATUS', status: 'SECURE' });
+  }
+  requestCount = 0;
+}, 2000);
+
+// Monitor Files
+watchFiles((file) => {
+  broadcast({ type: 'FILE_CHANGE', file });
+  broadcast({ type: 'ERROR_BOUNCE', file }); // Make it bounce on change
+});
+
+server.register(async (fastify) => {
+  fastify.get('/ws', { websocket: true }, (connection) => {
+    connection.socket.on('message', (message) => {
+      const data = JSON.parse(message.toString());
+      if (data.type === 'ACTIVATE_DEFENSE') {
+        defenseActive = true;
+        broadcast({ type: 'LOG', message: 'SHIELD ACTIVATED: Rate Limiting Enabled' });
+      }
+      if (data.type === 'DEACTIVATE_DEFENSE') {
+        defenseActive = false;
+        broadcast({ type: 'LOG', message: 'SHIELD DEACTIVATED' });
+      }
+    });
+  });
 });
 
 server.post('/reserve', async (request, reply) => {
-  try {
-    const data = ReserveSeatSchema.parse(request.body);
-    
-    // TODO: Implement Redis Distributed Lock here
-    // For now, simulated response
-    server.log.info(`Reserving seat ${data.seatId} for event ${data.eventId}`);
-    
-    return {
-      success: true,
-      message: 'Seat locked for 10 minutes',
-      expiresAt: new Date(Date.now() + 10 * 60000).toISOString()
-    };
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      return reply.status(400).send({ error: 'Validation Failed', details: error.errors });
-    }
-    return reply.status(500).send({ error: 'Internal Server Error' });
-  }
+  const { seatId, eventId, userId } = request.body as any;
+  const success = await lockSeat(eventId, seatId, userId);
+  if (success) broadcast({ type: 'SEAT_LOCKED', seatId, eventId });
+  return { success };
 });
 
 const start = async () => {
   try {
     await server.listen({ port: 3001, host: '0.0.0.0' });
-    console.log('Backend API running on http://localhost:3001');
+    console.log('Battle-Ready API running on http://localhost:3001');
   } catch (err) {
-    server.log.error(err);
     process.exit(1);
   }
 };

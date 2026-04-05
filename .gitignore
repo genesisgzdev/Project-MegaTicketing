@@ -1,0 +1,12 @@
+node_modules/
+dist/
+build/
+.env
+.DS_Store
+*.log
+.prisma/
+infra/.terraform/
+infra/*.tfstate*
+apps/web/dist/
+apps/api/dist/
+.gemini/

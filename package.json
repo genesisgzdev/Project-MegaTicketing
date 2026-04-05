@@ -12,6 +12,7 @@
     "security": "snyk test"
   },
   "devDependencies": {
+    "esbuild": "^0.25.0",
     "turbo": "^2.0.0",
     "typescript": "^5.0.0"
   }
