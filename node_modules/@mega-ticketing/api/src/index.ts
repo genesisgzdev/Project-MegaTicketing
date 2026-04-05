@@ -3,16 +3,15 @@ import cors from '@fastify/cors';
 import websocket from '@fastify/websocket';
 import rateLimit from '@fastify/rate-limit';
 import { z } from 'zod';
-import { lockSeat, releaseSeat } from './redis';
-import { db } from './db';
-import { createPaymentIntent } from './payments';
-import { getSystemHealth, watchFiles } from './game-state';
+import { config } from './config';
+import { lockSeat } from './redis';
+import { watchFiles, getSystemHealth } from './game-state';
 
 const server = Fastify({ 
   logger: {
-    level: 'info',
+    level: config.NODE_ENV === 'production' ? 'info' : 'debug',
     formatters: {
-      level: (label) => ({ level: label.toUpperCase() })
+      level: (label) => ({ severity: label.toUpperCase() })
     }
   } 
 });
@@ -20,16 +19,32 @@ const server = Fastify({
 server.register(cors);
 server.register(websocket);
 
-// Industrial Error Handler
 server.setErrorHandler((error, request, reply) => {
-  server.log.error(error);
+  server.log.error({ err: error, request: { method: request.method, url: request.url } });
+  
   if (error.validation) {
-    return reply.status(400).send({ error: 'Validation Error', details: error.validation });
+    return reply.status(400).send({ 
+      status: 'error', 
+      message: 'Validation failed', 
+      details: error.validation 
+    });
   }
-  reply.status(500).send({ error: 'Internal Server Error', code: 'INTERNAL_BATTLE_ERROR' });
+
+  if (error instanceof z.ZodError) {
+    return reply.status(400).send({
+      status: 'error',
+      message: 'Data validation error',
+      details: error.errors
+    });
+  }
+
+  reply.status(500).send({ 
+    status: 'error', 
+    message: 'An unexpected internal error occurred',
+    traceId: request.id
+  });
 });
 
-// Rate Limiter
 let defenseActive = false;
 server.register(rateLimit, {
   max: 100,
@@ -43,22 +58,6 @@ const broadcast = (data: any) => {
   });
 };
 
-// Attack Monitoring logic
-let requestCount = 0;
-server.addHook('onRequest', async (request, reply) => {
-  requestCount++;
-});
-
-setInterval(() => {
-  if (requestCount > 50) {
-    broadcast({ type: 'ATTACK_STATUS', status: 'ATTACK', intensity: requestCount });
-  } else {
-    broadcast({ type: 'ATTACK_STATUS', status: 'SECURE' });
-  }
-  requestCount = 0;
-}, 2000);
-
-// Watch for file changes (EDR Integration simulation)
 watchFiles((file) => {
   broadcast({ type: 'FILE_CHANGE', file });
 });
@@ -70,33 +69,38 @@ server.register(async (fastify) => {
         const data = JSON.parse(message.toString());
         if (data.type === 'ACTIVATE_DEFENSE') {
           defenseActive = true;
-          broadcast({ type: 'LOG', message: 'SHIELD ACTIVATED: Rate Limiting Enabled' });
+          server.log.info('Security shield engaged');
         }
         if (data.type === 'DEACTIVATE_DEFENSE') {
           defenseActive = false;
-          broadcast({ type: 'LOG', message: 'SHIELD DEACTIVATED' });
+          server.log.info('Security shield disengaged');
         }
       } catch (e) {
-        server.log.warn('Invalid WebSocket message received');
+        server.log.warn('Malformed WebSocket payload');
       }
     });
   });
 });
 
 const ReserveSchema = z.object({
-  seatId: z.string(),
-  eventId: z.string(),
-  userId: z.string()
+  seatId: z.string().uuid(),
+  eventId: z.string().uuid(),
+  userId: z.string().uuid()
 });
 
 server.post('/reserve', async (request, reply) => {
   const body = ReserveSchema.parse(request.body);
   const success = await lockSeat(body.eventId, body.seatId, body.userId);
+  
   if (success) {
     broadcast({ type: 'SEAT_LOCKED', seatId: body.seatId, eventId: body.eventId });
-    return { success: true };
+    return { status: 'success', data: { reserved: true } };
   }
-  return reply.status(409).send({ success: false, error: 'Seat already locked' });
+  
+  return reply.status(409).send({ 
+    status: 'error', 
+    message: 'The requested seat is currently unavailable' 
+  });
 });
 
 server.get('/health', async () => {
@@ -105,10 +109,10 @@ server.get('/health', async () => {
 
 const start = async () => {
   try {
-    await server.listen({ port: 3001, host: '0.0.0.0' });
-    console.log('🏟️ MegaTicketing API deployed at http://localhost:3001');
+    await server.listen({ port: config.PORT, host: '0.0.0.0' });
+    server.log.info(`API server initialized on port ${config.PORT}`);
   } catch (err) {
-    server.log.error(err);
+    server.log.fatal(err);
     process.exit(1);
   }
 };

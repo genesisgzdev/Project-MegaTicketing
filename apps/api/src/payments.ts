@@ -1,14 +1,15 @@
 import Stripe from 'stripe';
+import { config } from './config';
 
-// FIX: Handle Stripe constructor in ESM environment
-const stripe = new (Stripe as any)(process.env.STRIPE_SECRET_KEY || 'sk_test_placeholder', {
+// Handle Stripe constructor in ESM environment using validated config
+const stripe = new (Stripe as any)(config.STRIPE_SECRET_KEY, {
   apiVersion: '2024-11-20.acacia',
 });
 
 export const createPaymentIntent = async (amount: number, currency: string = 'usd', metadata: any) => {
   try {
     const paymentIntent = await stripe.paymentIntents.create({
-      amount: amount * 100, // Stripe uses cents
+      amount: Math.round(amount * 100), // Ensure integer for cents
       currency,
       metadata,
       automatic_payment_methods: {
@@ -18,8 +19,8 @@ export const createPaymentIntent = async (amount: number, currency: string = 'us
     
     return paymentIntent;
   } catch (error) {
-    console.error('Stripe Error:', error);
-    throw new Error('Failed to create payment intent');
+    // Error logic should be handled by the global Fastify error handler
+    throw error;
   }
 };
 

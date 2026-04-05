@@ -5,13 +5,17 @@ import path from 'path';
 
 const execAsync = promisify(exec);
 
+/**
+ * Executes a security health check using an external scanner.
+ * Expects the scanner binary to be available in the system PATH or 
+ * provided via the SECURITY_SCANNER_PATH environment variable.
+ */
 export const getSystemHealth = async () => {
   try {
-    // Real security scan in background
-    const projectRoot = path.join(__dirname, '../../..');
-    const scannerPath = process.env.OSV_SCANNER_PATH || 'osv-scanner';
+    const projectRoot = process.cwd();
+    const scannerPath = process.env.SECURITY_SCANNER_PATH || 'osv-scanner';
     
-    // We run a quick check on package.json
+    // Industrial check: avoid hardcoded local Windows paths
     const { stdout } = await execAsync(`${scannerPath} scan source -r ${projectRoot} --format json`);
     const results = JSON.parse(stdout);
     
@@ -21,12 +25,13 @@ export const getSystemHealth = async () => {
       status: results.results?.[0]?.packages?.length > 0 ? 'DANGER' : 'SECURE'
     };
   } catch (e) {
-    return { vulnerabilities: 0, status: 'SECURE', error: true };
+    // Graceful degradation: return a neutral state if the scanner is missing
+    return { vulnerabilities: 0, status: 'UNKNOWN', scanner_missing: true };
   }
 };
 
 export const watchFiles = (onchange: (file: string) => void) => {
-  const projectRoot = path.join(__dirname, '../../..');
+  const projectRoot = process.cwd();
   watch(projectRoot, { recursive: true }, (event, filename) => {
     if (filename && !filename.includes('node_modules') && !filename.includes('.git')) {
       onchange(filename);
