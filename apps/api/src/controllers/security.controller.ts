@@ -1,38 +1,30 @@
 import { FastifyInstance } from 'fastify';
-import { SecurityService } from '../services/security.service';
 
 /**
- * Controller to handle security management and real-time updates via WebSocket.
+ * SecurityController: Manages real-time security signals and defenses.
  */
 export class SecurityController {
-  constructor(private securityService: SecurityService) {}
+  constructor(private app: FastifyInstance, private onDefenseToggle: (status: boolean) => void) {}
 
   /**
-   * Registers the WebSocket route and handles real-time signaling.
-   * 
-   * @param fastify - The server instance with @fastify/websocket registered.
+   * Handles incoming WebSocket connections for security monitoring.
+   * Using any for connection to bypass Fastify version-specific type mismatches.
    */
-  registerRoutes(fastify: FastifyInstance): void {
-    fastify.register(async (instance) => {
-      instance.get('/ws', { websocket: true }, (connection) => {
-        connection.socket.on('message', (message) => {
-          try {
-            const data = JSON.parse(message.toString());
-            
-            // Atomic handling of security defense signals
-            if (data.type === 'ACTIVATE_DEFENSE') {
-              this.securityService.activate();
-              instance.log.info('Security shield engaged via WebSocket command');
-            }
-            if (data.type === 'DEACTIVATE_DEFENSE') {
-              this.securityService.deactivate();
-              instance.log.info('Security shield disengaged via WebSocket command');
-            }
-          } catch (e) {
-            instance.log.warn('Failed to parse incoming WebSocket payload');
-          }
-        });
-      });
+  handleConnection(connection: any) {
+    connection.socket.on('message', (message: Buffer) => {
+      try {
+        const data = JSON.parse(message.toString());
+        if (data.type === 'ACTIVATE_DEFENSE') {
+          this.onDefenseToggle(true);
+          this.app.log.info('Security shield engaged');
+        }
+        if (data.type === 'DEACTIVATE_DEFENSE') {
+          this.onDefenseToggle(false);
+          this.app.log.info('Security shield disengaged');
+        }
+      } catch (e) {
+        this.app.log.warn('Malformed WebSocket payload');
+      }
     });
   }
 }

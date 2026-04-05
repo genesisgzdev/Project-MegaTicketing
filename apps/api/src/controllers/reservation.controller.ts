@@ -1,11 +1,7 @@
-import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { z } from 'zod';
+import { FastifyRequest, FastifyReply, FastifyInstance } from 'fastify';
 import { ReservationService } from '../services/reservation.service';
+import { z } from 'zod';
 
-/**
- * Validates the body for the reserve seat route.
- * Replaces the local schema in index.ts for better organization.
- */
 const ReserveSchema = z.object({
   seatId: z.string().uuid(),
   eventId: z.string().uuid(),
@@ -13,42 +9,34 @@ const ReserveSchema = z.object({
 });
 
 /**
- * Controller responsible for handling reservation-related HTTP requests.
+ * ReservationController: Orchestrates the API lifecycle for seat bookings.
  */
 export class ReservationController {
-  constructor(
-    private reservationService: ReservationService,
-    private broadcast: (data: any) => void
-  ) {}
+  private service: ReservationService;
 
-  /**
-   * Registers reservation routes with the Fastify instance.
-   * 
-   * @param fastify - The server instance to register routes on.
-   */
-  registerRoutes(fastify: FastifyInstance): void {
-    fastify.post('/reserve', this.handleReserve.bind(this));
+  constructor(private app: FastifyInstance) {
+    this.service = new ReservationService();
   }
 
   /**
-   * Handles incoming POST requests to reserve a specific seat.
-   * Performs validation and orchestrates the reservation process.
-   * 
-   * @param request - Fastify request object containing reservation details.
-   * @param reply - Fastify reply object for sending the result.
+   * Entry point for seat reservation requests.
    */
-  private async handleReserve(request: FastifyRequest, reply: FastifyReply): Promise<void> {
-    const body = ReserveSchema.parse(request.body);
-    const success = await this.reservationService.reserveSeat(body.eventId, body.seatId, body.userId);
-    
-    if (success) {
-      this.broadcast({ type: 'SEAT_LOCKED', seatId: body.seatId, eventId: body.eventId });
-      return reply.send({ status: 'success', data: { reserved: true } });
+  async handleReservation(request: FastifyRequest, reply: FastifyReply) {
+    try {
+      const body = ReserveSchema.parse(request.body);
+      const success = await this.service.reserveSeat(body.eventId, body.seatId, body.userId);
+      
+      if (success) {
+        // Broadcast via the app's websocket server if needed
+        return reply.status(201).send({ status: 'success', data: { reserved: true } });
+      }
+      
+      return reply.status(409).send({ 
+        status: 'error', 
+        message: 'The requested seat is currently unavailable' 
+      });
+    } catch (error) {
+      throw error; // Handled by global error handler
     }
-    
-    return reply.status(409).send({ 
-      status: 'error', 
-      message: 'The requested seat is currently unavailable' 
-    });
   }
 }

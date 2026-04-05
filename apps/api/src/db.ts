@@ -1,4 +1,7 @@
-import { prisma } from '@mega-ticketing/database';
+import { db } from '@mega-ticketing/database';
 
-export const db = prisma;
-export default db;
+/**
+ * Industrial Database Provider.
+ * Bridges the monorepo database package with the API.
+ */
+export { db };

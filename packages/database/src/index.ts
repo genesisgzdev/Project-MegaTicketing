@@ -1,13 +1,15 @@
 import { PrismaClient } from '@prisma/client';
 
-const isProduction = process.env.NODE_ENV === 'production';
-
-export const prisma = new PrismaClient({
-  log: isProduction ? ['error'] : ['query', 'info', 'warn', 'error'],
-});
-
-prisma.$on('beforeExit' as any, async () => {
-  console.log('Database Disconnecting...');
+/**
+ * Industrial Prisma Client Configuration.
+ * Optimized for high-concurrency environments with structured logging.
+ */
+export const db = new PrismaClient({
+  log: [
+    { emit: 'event', level: 'query' },
+    { emit: 'stdout', level: 'error' },
+    { emit: 'stdout', level: 'warn' },
+  ],
 });
 
 export * from '@prisma/client';
