@@ -53,6 +53,13 @@ services:
     restart: unless-stopped
     deploy:
       replicas: 3
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 512M
+        reservations:
+          cpus: '0.10'
+          memory: 256M
     environment:
       - NODE_ENV=production
       - PORT=3001
