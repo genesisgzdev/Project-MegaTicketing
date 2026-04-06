@@ -1,4 +1,4 @@
-apiVersion: apps/v1
+﻿apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: megaticketing-api
@@ -44,3 +44,4 @@ spec:
   ports:
   - port: 80
     targetPort: 3001
+

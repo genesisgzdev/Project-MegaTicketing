@@ -1,4 +1,4 @@
-import './tracing';
+﻿import './tracing';
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import websocket from '@fastify/websocket';
@@ -11,7 +11,7 @@ import { HealthController } from './controllers/health.controller';
 import { WebhookController } from './controllers/webhook.controller';
 
 /**
- * Industrial API Entrypoint.
+ * production API Entrypoint.
  * Architecture: Controller/Service Pattern with High-Availability Redis Locking.
  */
 const server = Fastify({ 
@@ -96,3 +96,6 @@ const start = async () => {
 };
 
 start();
+
+
+

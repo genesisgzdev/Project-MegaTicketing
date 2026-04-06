@@ -1,7 +1,7 @@
-import { PrismaClient } from '@prisma/client';
+﻿import { PrismaClient } from '@prisma/client';
 
 /**
- * Industrial Prisma Client Configuration.
+ * production Prisma Client Configuration.
  * Optimized for high-concurrency environments with structured logging.
  */
 export const db = new PrismaClient({
@@ -13,3 +13,4 @@ export const db = new PrismaClient({
 });
 
 export * from '@prisma/client';
+

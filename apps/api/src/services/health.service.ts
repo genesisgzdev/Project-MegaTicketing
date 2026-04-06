@@ -1,4 +1,4 @@
-import { getSystemHealth } from '../game-state';
+﻿import { getSystemHealth } from '../game-state';
 
 /**
  * Result of a system health check operation.
@@ -25,3 +25,5 @@ export class HealthService {
     return health as Readonly<HealthStatus>;
   }
 }
+
+

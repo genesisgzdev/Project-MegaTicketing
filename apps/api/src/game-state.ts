@@ -1,4 +1,4 @@
-import { watch } from 'fs';
+﻿import { watch } from 'fs';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import path from 'path';
@@ -15,7 +15,7 @@ export const getSystemHealth = async () => {
     const projectRoot = process.cwd();
     const scannerPath = process.env.SECURITY_SCANNER_PATH || 'osv-scanner';
     
-    // Industrial check: avoid hardcoded local Windows paths
+    // production check: avoid hardcoded local Windows paths
     const { stdout } = await execAsync(`${scannerPath} scan source -r ${projectRoot} --format json`);
     const results = JSON.parse(stdout);
     
@@ -38,3 +38,5 @@ export const watchFiles = (onchange: (file: string) => void) => {
     }
   });
 };
+
+

@@ -1,4 +1,4 @@
-import { FastifyRequest, FastifyReply } from 'fastify';
+﻿import { FastifyRequest, FastifyReply } from 'fastify';
 import { getSystemHealth } from '../game-state';
 
 /**
@@ -13,3 +13,5 @@ export class HealthController {
     return reply.status(200).send(health);
   }
 }
+
+

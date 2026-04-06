@@ -1,8 +1,8 @@
-import Redis from 'ioredis';
+﻿import Redis from 'ioredis';
 import { config } from './config';
 
 /**
- * Industrial-grade Redis client configuration.
+ * production Redis client configuration.
  * Implements exponential backoff and structured connection event handling.
  */
 const redis = new Redis({
@@ -69,3 +69,5 @@ export const markSeatAsPaid = async (eventId: string, seatId: string): Promise<v
 };
 
 export default redis;
+
+

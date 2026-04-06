@@ -1,9 +1,9 @@
-import { PubSub } from '@google-cloud/pubsub';
+﻿import { PubSub } from '@google-cloud/pubsub';
 import { FastifyBaseLogger } from 'fastify';
 import { config } from '../config';
 
 /**
- * Industrial-grade Pub/Sub Service.
+ * production Pub/Sub Service.
  * Orchestrates asynchronous order fulfillment streams with robust error handling and retries.
  */
 export class PubSubService {
@@ -69,3 +69,5 @@ export class PubSubService {
     }
   }
 }
+
+

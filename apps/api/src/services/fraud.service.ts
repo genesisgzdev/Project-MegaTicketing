@@ -1,4 +1,4 @@
-import redis from '../redis';
+﻿import redis from '../redis';
 
 /**
  * FraudService: Advanced security module for detecting suspicious reservation patterns.
@@ -59,3 +59,5 @@ export class FraudService {
     return count > this.PATTERN_LIMIT;
   }
 }
+
+

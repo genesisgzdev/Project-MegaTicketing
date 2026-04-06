@@ -1,4 +1,4 @@
-import Stripe from 'stripe';
+﻿import Stripe from 'stripe';
 import { config } from './config';
 
 // Handle Stripe constructor in ESM environment using validated config
@@ -8,7 +8,7 @@ const stripe = new (Stripe as any)(config.STRIPE_SECRET_KEY, {
 
 export const createPaymentIntent = async (amount: number, currency: string = 'usd', metadata: any) => {
   try {
-    // Generate an industrial-grade idempotency key from seat and event
+    // Generate an production idempotency key from seat and event
     const idempotencyKey = `pay_${metadata.eventId}_${metadata.seatId}`;
 
     const paymentIntent = await stripe.paymentIntents.create({
@@ -30,3 +30,5 @@ export const createPaymentIntent = async (amount: number, currency: string = 'us
 };
 
 export default stripe;
+
+

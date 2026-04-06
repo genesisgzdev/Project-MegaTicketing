@@ -1,4 +1,4 @@
-import { FastifyRequest, FastifyReply, FastifyInstance } from 'fastify';
+﻿import { FastifyRequest, FastifyReply, FastifyInstance } from 'fastify';
 import stripe from '../payments';
 import { ReservationService } from '../services/reservation.service';
 import { config } from '../config';
@@ -32,7 +32,7 @@ export class WebhookController {
       return reply.status(400).send(`Webhook Error: ${err.message}`);
     }
 
-    // Handle specific industrial event types
+    // Handle specific production event types
     if (event.type === 'payment_intent.succeeded') {
       const paymentIntent = event.data.object as any;
       const { eventId, seatId } = paymentIntent.metadata;
@@ -46,3 +46,5 @@ export class WebhookController {
     return reply.status(200).send({ received: true });
   }
 }
+
+

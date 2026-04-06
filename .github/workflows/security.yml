@@ -1,29 +1,28 @@
 name: Industrial Security Pipeline
 
 on:
-  workflow_dispatch: # Desactivado temporalmente el trigger automático debido a bloqueo de facturación en GitHub. Ejecutable manualmente.
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
 
 jobs:
-  security-audit:
+  snyk-sca:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       
-      - name: Install System Dependencies
-        continue-on-error: true
-        run: sudo apt-get update -y && sudo apt-get install -y openssl
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: 'npm'
 
-      - name: Install Monorepo Dependencies
-        continue-on-error: true
-        run: npm install --legacy-peer-deps || true
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps || npm install --legacy-peer-deps --no-package-lock
         
       - name: Generate Database Client
-        continue-on-error: true
         run: npm run db:generate --prefix packages/database || true
 
       - name: Run Snyk SCA (Monorepo Mode)
@@ -33,21 +32,12 @@ jobs:
             npx --yes snyk auth ${{ secrets.SNYK_TOKEN }} || true
             npx --yes snyk test --all-projects --severity-threshold=high || true
           else
-            echo "Skipping Snyk scan due to missing token."
+            echo "::warning::Skipping Snyk scan due to missing SNYK_TOKEN secret."
           fi
-
-      - name: Trigger SOC Bot Report
-        continue-on-error: true
-        run: |
-          python3 apps/api/scripts/soc_bot_trigger.py
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
-        if: always()
 
   smoke-test:
     runs-on: ubuntu-latest
-    needs: security-audit
+    needs: snyk-sca
     steps:
       - uses: actions/checkout@v4
       
@@ -55,7 +45,7 @@ jobs:
         continue-on-error: true
         run: |
           docker compose up -d --build || true
-          sleep 10
+          sleep 15
           
       - name: Performance & Consistency Load Test
         continue-on-error: true

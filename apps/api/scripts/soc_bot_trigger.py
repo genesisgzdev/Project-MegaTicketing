@@ -1,4 +1,4 @@
-import os
+﻿import os
 import requests
 import json
 
@@ -17,20 +17,20 @@ def create_soc_issue():
         "Accept": "application/vnd.github.v3+json"
     }
     
-    # Template Industrial de SOC solicitado
+    # Template production de SOC solicitado
     payload = {
         "title": "[SOC-URGENT] Verify ETW-Ti Telemetry for Early Bird APC Injection 2026",
         "body": """
 ### Reporte del Centro de Operaciones (SOC)
 
-Se ha detectado una nueva técnica de inyección mediante **NtQueueApcThread** en campañas activas de Abril de 2026.
+Se ha detectado una nueva tÃ©cnica de inyecciÃ³n mediante **NtQueueApcThread** en campaÃ±as activas de Abril de 2026.
 
-**Acción requerida:**
-Validar que la implementación del `SequenceCorrelator` y el driver en `TDSDriver.c` estén correlacionando correctamente los eventos de Early Bird provenientes de la telemetría ETW-Ti.
+**AcciÃ³n requerida:**
+Validar que la implementaciÃ³n del `SequenceCorrelator` y el driver en `TDSDriver.c` estÃ©n correlacionando correctamente los eventos de Early Bird provenientes de la telemetrÃ­a ETW-Ti.
 
 **Arsenal Integrado:**
-- **Snyk:** Escaneo dinámico completado con 0 vulnerabilidades (Token UAT Validado).
-- **Google SecOps:** Configuración de regla YARA-L pendiente de ingesta.
+- **Snyk:** Escaneo dinÃ¡mico completado con 0 vulnerabilidades (Token UAT Validado).
+- **Google SecOps:** ConfiguraciÃ³n de regla YARA-L pendiente de ingesta.
 - **Infrastructure:** Despliegue en cluster GKE verificado para alta disponibilidad.
 """,
         "labels": ["security", "SOC-URGENT"]
@@ -44,3 +44,5 @@ Validar que la implementación del `SequenceCorrelator` y el driver en `TDSDrive
 
 if __name__ == "__main__":
     create_soc_issue()
+
+

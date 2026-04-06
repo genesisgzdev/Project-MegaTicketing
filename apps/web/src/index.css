@@ -1,4 +1,4 @@
-@tailwind base;
+﻿@tailwind base;
 @tailwind components;
 @tailwind utilities;
 
@@ -13,3 +13,5 @@
   grid-template-columns: repeat(10, minmax(0, 1fr));
   gap: 0.5rem;
 }
+
+

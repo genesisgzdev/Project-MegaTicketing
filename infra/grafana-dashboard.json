@@ -1,4 +1,4 @@
-{
+﻿{
   "annotations": { "list": [] },
   "editable": true,
   "fiscalYearStartMonth": 0,
@@ -39,3 +39,4 @@
   "time": { "from": "now-1h", "to": "now" },
   "title": "MegaTicketing: production Operations Center"
 }
+

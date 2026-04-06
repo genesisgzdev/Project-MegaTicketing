@@ -1,4 +1,4 @@
-import { z } from 'zod';
+﻿import { z } from 'zod';
 
 /**
  * Validates a request to reserve a specific seat at an event.
@@ -40,3 +40,4 @@ export const TicketSchema = z.object({
  * Immutable entity representing a ticket in the system.
  */
 export type Ticket = Readonly<z.infer<typeof TicketSchema>>;
+

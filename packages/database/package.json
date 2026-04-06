@@ -1,6 +1,6 @@
-{
+﻿{
   "name": "@mega-ticketing/database",
-  "version": "1.0.0",
+  "version": "1.10.0",
   "main": "dist/index.js",
   "scripts": {
     "db:generate": "prisma generate",
@@ -13,3 +13,4 @@
     "prisma": "^5.22.0"
   }
 }
+

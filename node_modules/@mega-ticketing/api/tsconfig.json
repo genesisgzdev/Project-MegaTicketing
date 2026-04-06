@@ -1,4 +1,4 @@
-{
+﻿{
   "compilerOptions": {
     "target": "ESNext",
     "module": "NodeNext",
@@ -18,3 +18,5 @@
   "include": ["src/**/*"],
   "exclude": ["node_modules"]
 }
+
+

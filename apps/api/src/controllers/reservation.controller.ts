@@ -1,4 +1,4 @@
-import { FastifyRequest, FastifyReply, FastifyInstance } from 'fastify';
+﻿import { FastifyRequest, FastifyReply, FastifyInstance } from 'fastify';
 import { ReservationService } from '../services/reservation.service';
 import { PubSubService } from '../services/pubsub.service';
 import { FraudService } from '../services/fraud.service';
@@ -44,7 +44,7 @@ export class ReservationController {
         });
       }
 
-      // 2. Attempt to acquire distributed lock in Redis (Industrial approach)
+      // 2. Attempt to acquire distributed lock in Redis (production approach)
       const success = await this.service.reserveSeat(body.eventId, body.seatId, body.userId);
       
       if (success) {
@@ -84,3 +84,5 @@ export class ReservationController {
     }
   }
 }
+
+

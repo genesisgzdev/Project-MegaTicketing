@@ -1,4 +1,4 @@
-import { z } from 'zod';
+﻿import { z } from 'zod';
 
 const configSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
@@ -17,3 +17,5 @@ const configSchema = z.object({
 export const config = configSchema.parse(process.env);
 
 export type Config = z.infer<typeof configSchema>;
+
+

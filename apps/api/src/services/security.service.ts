@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Service to manage system-wide security defense modes.
  * Provides granular control over protection mechanisms like rate limiting.
  */
@@ -26,3 +26,5 @@ export class SecurityService {
     this._defenseActive = false;
   }
 }
+
+

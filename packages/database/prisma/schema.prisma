@@ -1,4 +1,4 @@
-// Prisma schema for MegaTicketing
+﻿// Prisma schema for MegaTicketing
 
 generator client {
   provider        = "prisma-client-js"
@@ -55,3 +55,4 @@ enum TicketStatus {
   PAID
   CANCELLED
 }
+

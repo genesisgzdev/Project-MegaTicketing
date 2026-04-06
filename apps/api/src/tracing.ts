@@ -1,4 +1,4 @@
-import { NodeSDK } from '@opentelemetry/sdk-node';
+﻿import { NodeSDK } from '@opentelemetry/sdk-node';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-grpc';
 import { HttpInstrumentation } from '@opentelemetry/instrumentation-http';
 import { FastifyInstrumentation } from '@opentelemetry/instrumentation-fastify';
@@ -43,3 +43,5 @@ process.on('SIGTERM', () => {
 });
 
 export default sdk;
+
+

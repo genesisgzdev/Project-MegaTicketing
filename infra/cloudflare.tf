@@ -1,4 +1,4 @@
-resource "cloudflare_zone" "megaticketing" {
+﻿resource "cloudflare_zone" "megaticketing" {
   account_id = var.cloudflare_account_id
   zone       = "megaticketing.io"
 }
@@ -41,3 +41,4 @@ resource "cloudflare_rate_limit" "api_limit" {
     }
   }
 }
+

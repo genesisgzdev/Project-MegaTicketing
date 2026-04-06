@@ -1,5 +1,6 @@
-#!/usr/bin/env sh
+﻿#!/usr/bin/env sh
 . "$(dirname -- "$0")/_/husky.sh"
 
-echo "[🛡️ MegaTicketing Shield] Running Local Snyk SCA Audit..."
+echo "[ðŸ›¡ï¸ MegaTicketing Shield] Running Local Snyk SCA Audit..."
 npx --yes snyk test --all-projects --severity-threshold=high
+

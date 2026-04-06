@@ -1,4 +1,4 @@
-# MegaTicketing Architecture
+﻿# MegaTicketing Architecture
 
 ## System Overview
 A high-performance, real-time ticketing system designed to handle massive spikes in traffic (e.g., concert on-sales).
@@ -29,3 +29,5 @@ A high-performance, real-time ticketing system designed to handle massive spikes
 - `apps/web`: Admin and Customer portals.
 - `packages/shared`: Common TypeScript types and validation schemas (Zod).
 - `packages/database`: Prisma models and migrations.
+
+

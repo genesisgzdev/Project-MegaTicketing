@@ -1,4 +1,4 @@
-resource "kubernetes_namespace" "production" {
+﻿resource "kubernetes_namespace" "production" {
   metadata {
     name = "megaticketing-prod"
   }
@@ -75,3 +75,4 @@ resource "kubernetes_service" "api_service" {
     type = "LoadBalancer"
   }
 }
+

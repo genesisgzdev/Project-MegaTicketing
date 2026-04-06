@@ -1,4 +1,4 @@
-provider "google" {
+﻿provider "google" {
   project = var.project_id
   region  = var.region
 }
@@ -60,3 +60,4 @@ output "kubernetes_cluster_name" {
   value       = google_container_cluster.primary.name
   description = "GKE Cluster Name"
 }
+
