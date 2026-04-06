@@ -33,8 +33,8 @@ jobs:
         continue-on-error: true
         run: |
           if [ -n "${{ secrets.SNYK_TOKEN }}" ]; then
-            npx snyk auth ${{ secrets.SNYK_TOKEN }} || true
-            npx snyk test --all-projects --severity-threshold=high || true
+            npx --yes snyk auth ${{ secrets.SNYK_TOKEN }} || true
+            npx --yes snyk test --all-projects --severity-threshold=high || true
           else
             echo "Skipping Snyk scan due to missing token."
           fi
@@ -54,7 +54,7 @@ jobs:
       - name: Performance & Consistency Load Test
         continue-on-error: true
         run: |
-          npx autocannon -c 10 -d 5 -m POST \
+          npx --yes autocannon -c 10 -d 5 -m POST \
             -H "Content-Type=application/json" \
             -b '{"seatId":"550e8400-e29b-41d4-a716-446655440000","eventId":"550e8400-e29b-41d4-a716-446655440001","userId":"550e8400-e29b-41d4-a716-446655440002"}' \
             http://localhost:3001/reserve || true
