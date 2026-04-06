@@ -3,8 +3,8 @@ WORKDIR /usr/src/app
 COPY package*.json ./
 COPY apps/web/package*.json ./apps/web/
 COPY packages/shared/package*.json ./packages/shared/
-# FIX: Industrial dependency resolution bypass
-RUN npm install --legacy-peer-deps
+# FIX: Industrial dependency resolution bypass and ignore scripts to skip husky
+RUN npm install --legacy-peer-deps --ignore-scripts
 COPY . .
 RUN npm run build --prefix apps/web
 

@@ -1,7 +1,7 @@
 # 🏟️ Project MegaTicketing
 > **High-Performance Industrial Ticketing Suite & Real-Time Logistics Monorepo**
 
-[![Security Status](https://img.shields.io/badge/Security-Snyk%20Certified-blueviolet?style=for-the-badge&logo=snyk)](https://app.snyk.io/org/genesisgzdev)
+[![Security Status](https://img.shields.io/badge/Security-Snyk%20Certified-blueviolet?style=for-the-badge&logo=snyk)](https://github.com/genesisgzdev/Project-MegaTicketing/security/code-scanning)
 [![Architecture](https://img.shields.io/badge/Architecture-Clean%20Hexagonal-blue?style=for-the-badge)](docs/ARCHITECTURE.md)
 [![Stack](https://img.shields.io/badge/Built%20With-Fastify%20%7C%20React%20%7C%20Redis%20%7C%20Prisma-green?style=for-the-badge)](https://github.com/genesisgzdev/Project-MegaTicketing)
 [![License](https://img.shields.io/badge/License-Apache%202.0-red?style=for-the-badge)](LICENSE)
