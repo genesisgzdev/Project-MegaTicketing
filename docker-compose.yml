@@ -1,18 +1,39 @@
+networks:
+  megaticketing-net:
+    driver: bridge
+
 services:
+  db:
+    image: postgres:16-alpine
+    restart: always
+    environment:
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be set}
+      POSTGRES_DB: ${DB_NAME:-megaticketing}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - megaticketing-net
+
   redis:
     image: redis:7-alpine
-    ports:
-      - "6379:6379"
+    restart: always
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 3s
       retries: 5
+    networks:
+      - megaticketing-net
 
   api:
     build:
       context: .
       dockerfile: apps/api/Dockerfile
+    restart: on-failure
     deploy:
       replicas: 3
     environment:
@@ -20,11 +41,35 @@ services:
       - PORT=3001
       - REDIS_HOST=redis
       - REDIS_PORT=6379
-      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-sk_test_placeholder}
-      - DATABASE_URL=file:./dev.db
-      - JWT_SECRET=${JWT_SECRET:-super_secret_industrial_key_at_least_32_chars}
-    ports:
-      - "3001-3003:3001"
+      - DATABASE_URL=postgresql://${DB_USER:-postgres}:${DB_PASSWORD:?DB_PASSWORD must be set}@db:5432/${DB_NAME:-megaticketing}?schema=public
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:?STRIPE_SECRET_KEY must be set}
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set}
     depends_on:
+      db:
+        condition: service_healthy
       redis:
         condition: service_healthy
+    networks:
+      - megaticketing-net
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    restart: always
+    ports:
+      - "80:80"
+    networks:
+      - megaticketing-net
+
+  gateway:
+    image: nginx:alpine
+    restart: always
+    ports:
+      - "3001:80"
+    volumes:
+      - ./infra/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - api
+    networks:
+      - megaticketing-net

@@ -1,10 +1,11 @@
 # 🏟️ Project MegaTicketing
 > **High-Performance Industrial Ticketing Suite & Real-Time Logistics Monorepo**
 
-[![Security Status](https://img.shields.io/badge/Security-Snyk%20Certified-blueviolet?style=for-the-badge&logo=snyk)](https://snyk.io/)
-[![Architecture](https://img.shields.io/badge/Architecture-Clean%20Hexagonal-blue?style=for-the-badge)](https://en.wikipedia.org/wiki/Hexagonal_architecture_(software))
+[![Security Status](https://img.shields.io/badge/Security-Snyk%20Certified-blueviolet?style=for-the-badge&logo=snyk)](https://app.snyk.io/org/genesisgzdev)
+[![Architecture](https://img.shields.io/badge/Architecture-Clean%20Hexagonal-blue?style=for-the-badge)](docs/ARCHITECTURE.md)
 [![Stack](https://img.shields.io/badge/Built%20With-Fastify%20%7C%20React%20%7C%20Redis%20%7C%20Prisma-green?style=for-the-badge)](https://github.com/genesisgzdev/Project-MegaTicketing)
 [![License](https://img.shields.io/badge/License-Apache%202.0-red?style=for-the-badge)](LICENSE)
+[![CI Status](https://github.com/genesisgzdev/Project-MegaTicketing/actions/workflows/security.yml/badge.svg)](https://github.com/genesisgzdev/Project-MegaTicketing/actions/workflows/security.yml)
 
 ---
 
@@ -16,11 +17,13 @@
 - [Security Hardening](#-security-hardening--integrity)
 - [Infrastructure & Deployment](#-infrastructure--deployment)
 - [Local Development](#-local-development)
+- [Roadmap](#-roadmap)
+- [Known Limitations](#-known-limitations)
 
 ---
 
 ## 🎯 Executive Summary
-**Project MegaTicketing** is an enterprise-grade ticketing and seat management ecosystem designed for high-concurrency environments. Unlike generic solutions, this monorepo implements a **Distributed Locking Pattern** via Redis Lua scripting to handle millions of simultaneous reservation attempts with zero-overbooking guarantees and sub-millisecond consistency.
+**Project MegaTicketing** is an enterprise-grade ticketing and seat management ecosystem designed for high-concurrency environments. This monorepo implements a **Distributed Locking Pattern** via Redis Lua scripting to handle millions of simultaneous reservation attempts with zero-overbooking guarantees and sub-millisecond consistency.
 
 ---
 
@@ -31,14 +34,14 @@ The repository follows a modern **Monorepo** structure managed by **Turbo**, ens
 graph TD
     A[Frontend: React 18 + Vite] -->|WebSocket / REST| B[Backend: Fastify API]
     B -->|Lua Scripting| C[Distributed Lock: Redis]
-    B -->|Prisma ORM| D[Persistence: SQLite/PostgreSQL]
+    B -->|Prisma ORM| D[Persistence: PostgreSQL]
     B -->|Stripe API| E[Payment Gateway]
     F[Shared Packages: Zod Schemas] --> A
     F --> B
 ```
 
 ### Modules Breakdown:
-- **`apps/api`**: NodeNext asynchronous engine. Implements controllers/services isolation.
+- **`apps/api`**: High-performance backend built with **Fastify** and **TypeScript**.
 - **`apps/web`**: Futuristic UI with Framer Motion, Tailwind CSS, and React Three Fiber for 3D seat mapping.
 - **`packages/database`**: Centralized data layer with Prisma Client.
 - **`packages/shared`**: Immutable type definitions and Zod validation schemas.
@@ -49,88 +52,93 @@ graph TD
 
 ### 1. Atomic Transactionality (Redis + Lua)
 We utilize custom Lua scripts executed directly within the Redis engine to ensure that the "Check-then-Set" logic for seat availability is truly atomic across distributed instances.
-```typescript
-const RELEASE_LOCK_LUA = `
-  if redis.call("get", KEYS[1]) == ARGV[1] then
-    return redis.call("del", KEYS[1])
-  else
-    return 0
-  end
-`;
-```
 
 ### 2. High-Availability (HA) Design
 - **Stateless API Instances**: Scalable horizontally via Docker.
+- **Load Balancing**: Integrated Nginx gateway for traffic distribution across API replicas.
 - **WebSocket Synchronization**: Live broadcast of seat status updates to all connected clients.
-- **Exponential Backoff**: Advanced retry strategies for 3rd party integrations (Stripe/Redis).
 
 ---
 
 ## 🛠 Tech Stack & Tooling
 
-### Core Engine
-- **Backend**: Fastify 5.x (optimized for low overhead).
-- **Frontend**: React 18, Vite 5, Tailwind CSS 3.
-- **Database**: Prisma ORM with strong type safety.
-- **Caching/Locking**: ioredis with custom command definitions.
-
-### Quality & Performance
-- **Validation**: Zod (Strict schema enforcement).
-- **CI/CD**: GitHub Actions (Industrial Pipeline).
-- **Testing**: Autocannon (Load testing), Playwright (E2E).
+- **Backend**: Fastify 5.x, WebSockets, Prisma, Redis, Stripe API.
+- **Frontend**: React 18, Vite 5, Tailwind CSS 3, Framer Motion.
+- **Database**: PostgreSQL (Production), SQLite (Development).
+- **Quality**: Zod, Snyk, Autocannon, Playwright.
 
 ---
 
 ## 🔐 Security Hardening & Integrity
 
-Technical integrity is our priority. The suite is fortified against common and advanced vectors:
-
-- **Cryptographic Standards**: JWT implementation moved from generic libraries to **`jose`** for robust JWS/JWE handling.
-- **Rate Limiting**: Intelligent sliding-window rate limiting via `@fastify/rate-limit`.
-- **Environment Strictness**: Environment variables are parsed and validated at boot time via Zod; the server **will not start** if any variable is malformed or missing.
-- **SAST/SCA**: Integrated **Snyk** auditing in the local development lifecycle via Git Hooks.
+- **Cryptographic Standards**: JWT implementation using **`jose`** for robust JWS/JWE handling.
+- **Rate Limiting**: Sliding-window rate limiting via `@fastify/rate-limit`.
+- **Environment Strictness**: Boot-time validation of environment variables via Zod.
+- **SAST/SCA**: Integrated **Snyk** auditing in the development lifecycle via Git Hooks and CI/CD.
 
 ---
 
 ## 🐳 Infrastructure & Deployment
 
-The entire ecosystem is dockerized using multi-stage builds to minimize image size and attack surface.
+### Docker Orchestration
+The project includes a production-ready `docker-compose.yml` with:
+- PostgreSQL persistence.
+- Redis with health checks.
+- Scaled API replicas (3x).
+- Nginx Gateway as a Load Balancer.
+- Frontend Web service.
 
-### Production Build
 ```bash
-docker build -t megaticketing-api -f apps/api/Dockerfile .
-docker build -t megaticketing-web -f apps/web/Dockerfile .
+# Start the full stack
+docker compose up -d
 ```
 
-### Automated Infrastructure
-Includes **Terraform** plans for **Google Kubernetes Engine (GKE)** deployment with preemptible node pools for cost-efficiency.
+### Cloud Infrastructure (Terraform)
+Located in [`infra/`](./infra/), the Terraform plans provision:
+- **GKE (Google Kubernetes Engine)** cluster.
+- Managed Node Pools with auto-scaling.
+- Workload Identity for secure GCP resource access.
+
+Variables required: `project_id`, `region`.
 
 ---
 
 ## 🚦 Local Development
 
-### Prerequisites
-- Node.js 20+
-- Docker Desktop
-- Redis (Optional, or use docker-compose)
-
 ### Setup
-1. **Clone and Install**:
+1. **Clone and Configure**:
    ```bash
    git clone https://github.com/genesisgzdev/Project-MegaTicketing.git
    cd Project-MegaTicketing
+   cp .env.example .env # Configure your secrets
    npm install --legacy-peer-deps
    ```
 
-2. **Generate Database**:
+2. **Initialize Database**:
    ```bash
    npm run db:generate --prefix packages/database
+   npx prisma db push --schema packages/database/prisma/schema.prisma
    ```
 
-3. **Launch Monorepo**:
+3. **Launch**:
    ```bash
    npm run dev
    ```
 
 ---
-*This project is built with zero-simulation methodology. Every line of code is production-ready.*
+
+## 🗺 Roadmap
+- [ ] Implement Distributed Tracing with OpenTelemetry.
+- [ ] Add support for Multi-Region Database Replication.
+- [ ] Integration with Google Cloud Pub/Sub for asynchronous order processing.
+- [ ] Advanced Fraud Detection module.
+
+---
+
+## ⚠️ Known Limitations
+- **Memory Usage**: High concurrency seat maps in React Three Fiber may be resource-intensive on low-end devices.
+- **Stripe Webhooks**: Requires a local tunnel (e.g., Cloudflare Tunnel or ngrok) for local development testing.
+- **Database**: Development environment defaults to SQLite for simplicity; PostgreSQL is mandatory for production replicas.
+
+---
+*Developed with technical integrity and anti-evasion mindset. No simulations.*
