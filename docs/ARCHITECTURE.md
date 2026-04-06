@@ -22,7 +22,7 @@ A high-performance, real-time ticketing system designed to handle massive spikes
 ## Security Layer
 - **Auth:** JWT with Refresh Tokens stored in HTTP-only cookies.
 - **Audit:** All transactions logged with checksums in `packages/database`.
-- **Scanning:** Continuous CI/CD security scanning via Snyk and Gemini-Security.
+- **Scanning:** Continuous CI/CD security scanning via Snyk and OSV-Scanner.
 
 ## Directory Structure
 - `apps/api`: REST/GraphQL endpoints.

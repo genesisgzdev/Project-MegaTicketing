@@ -1,49 +1,66 @@
 # MegaTicketing
 
-High-availability ticketing monorepo designed for extreme concurrency and real-time consistency. Built with a decoupled microservices architecture and distributed locking.
+Monorepo for high-concurrency event ticketing. Features distributed consistency and integrated security telemetry.
 
 ## System Architecture
 
-The monorepo is orchestrated by **Turbo** and utilizes a shared-nothing backend design for horizontal scalability.
+The monorepo utilizes a shared-nothing backend design for horizontal scalability.
 
 ```mermaid
 graph TD
-    A[Frontend: React 18 + Vite] -->|WebSocket / REST| G[Gateway: Nginx]
-    G -->|Load Balance| B[Backend: Fastify API x3]
-    B -->|Lua Scripting| C[Distributed Lock: Redis]
-    B -->|Prisma ORM| D[Persistence: PostgreSQL]
-    B -->|Stripe API| E[Payment Gateway]
-    B -->|Async Events| H[Google Cloud Pub/Sub]
-    F[Shared Packages: Zod Schemas] --> A
+    subgraph Frontend [Client Layer]
+        A[React 18 Application]
+    end
+    subgraph Gateway [Entry Point]
+        G[Nginx Gateway]
+    end
+    subgraph Backend [Service Layer]
+        B[Fastify API Cluster]
+        H[GCP Pub/Sub]
+    end
+    subgraph Data [Consistency Layer]
+        C[Redis Distributed Lock]
+        D[PostgreSQL Database]
+        E[Stripe API]
+    end
+
+    A -->|WebSocket / REST| G
+    G --> B
+    B --> C
+    B --> D
+    B --> E
+    B --> H
+    F[Shared Schemas] --> A
     F --> B
 ```
 
-### Engineering Pillars
+### Technical Implementation
 
--   **Atomic Transactionality (Redis + Lua)**: Reservation logic uses custom Lua scripts executed within the Redis engine. This guarantees that "Check-then-Set" operations for seat availability are truly atomic across distributed API replicas.
--   **Strong Type Safety**: Shared packages provide immutable Zod schemas and TypeScript interfaces to ensure data integrity from the database layer to the user interface.
--   **Security Hardening**: Implements `jose` for cryptographically sound JWT handling and strict environment validation via `config.ts` to prevent inconsistent boot states.
--   **Observability**: Integrated Prometheus instrumentation and structured JSON logging for real-time monitoring and SOC integration.
+- **Atomic State Transitions**: Custom Lua scripts in Redis enforce atomic logic for seat availability.
+- **Type-Safe Schema Sharing**: Centralized Zod definitions ensure data integrity across the stack.
+- **Security Interoperability**: Telemetry is structured for real-time correlation by the TDS EDR suite.
+- **Infrastructure**: Multi-stage Docker builds and GKE deployment manifests.
 
 ## Technical Stack
 
--   **Backend**: Fastify, TypeScript, Prisma, Redis, Stripe, GCP Pub/Sub.
--   **Frontend**: React 18, Vite, Tailwind CSS, Framer Motion.
--   **Infrastructure**: Docker, Kubernetes (GKE), Terraform.
+- **Runtime**: Node.js 20
+- **Backend**: Fastify, TypeScript, Prisma, Redis, Stripe.
+- **Frontend**: React 18, Vite, Tailwind CSS.
+- **DevOps**: Docker, Kubernetes (GKE), Terraform.
 
-## Deployment
+## Execution
 
-### Local Environment
+### Local Development
 ```bash
 npm install
 npm run db:generate
 npm run dev
 ```
 
-### Containerized Cluster
+### Containerized Environment
 ```bash
 docker compose up -d --build
 ```
 
-## Security Audit
-This project is continuously scanned by **Snyk** and **OSV-Scanner**. Automated SOC reports are generated upon critical detection via integrated GitHub Action pipelines.
+## Security and Audit
+Audited via Snyk and OSV-Scanner pipelines. Incident reporting is integrated with GitHub Issues. Finalized April 6, 2026.
