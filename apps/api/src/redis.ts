@@ -60,4 +60,12 @@ export const releaseSeat = async (eventId: string, seatId: string, userId: strin
   return result === 1;
 };
 
+/**
+ * Persistently marks a seat as PAID in Redis.
+ */
+export const markSeatAsPaid = async (eventId: string, seatId: string): Promise<void> => {
+  const statusKey = `seat:status:event:${eventId}:seat:${seatId}`;
+  await redis.set(statusKey, 'PAID');
+};
+
 export default redis;

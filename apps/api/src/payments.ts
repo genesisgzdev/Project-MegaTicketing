@@ -8,6 +8,9 @@ const stripe = new (Stripe as any)(config.STRIPE_SECRET_KEY, {
 
 export const createPaymentIntent = async (amount: number, currency: string = 'usd', metadata: any) => {
   try {
+    // Generate an industrial-grade idempotency key from seat and event
+    const idempotencyKey = `pay_${metadata.eventId}_${metadata.seatId}`;
+
     const paymentIntent = await stripe.paymentIntents.create({
       amount: Math.round(amount * 100), // Ensure integer for cents
       currency,
@@ -15,6 +18,8 @@ export const createPaymentIntent = async (amount: number, currency: string = 'us
       automatic_payment_methods: {
         enabled: true,
       },
+    }, {
+      idempotencyKey
     });
     
     return paymentIntent;

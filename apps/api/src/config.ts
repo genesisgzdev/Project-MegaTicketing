@@ -7,6 +7,7 @@ const configSchema = z.object({
   REDIS_PORT: z.coerce.number().default(6379),
   REDIS_PASSWORD: z.string().optional(),
   STRIPE_SECRET_KEY: z.string().min(1, 'Stripe secret key is required'),
+  STRIPE_WEBHOOK_SECRET: z.string().optional(),
   DATABASE_URL: z.string().min(1, 'Database URL is required'),
   JWT_SECRET: z.string().min(32, 'JWT Secret must be at least 32 characters'),
 });
