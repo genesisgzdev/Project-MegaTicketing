@@ -9,7 +9,8 @@
     "dev": "turbo run dev",
     "build": "turbo run build",
     "lint": "turbo run lint",
-    "security": "snyk test"
+    "security": "snyk test",
+    "prepare": "husky"
   },
   "devDependencies": {
     "esbuild": "^0.25.0",
