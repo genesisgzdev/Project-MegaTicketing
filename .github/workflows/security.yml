@@ -1,10 +1,7 @@
 name: Industrial Security Pipeline
 
 on:
-  push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
+  workflow_dispatch: # Desactivado temporalmente el trigger automático debido a bloqueo de facturación en GitHub. Ejecutable manualmente.
 
 jobs:
   security-audit:
