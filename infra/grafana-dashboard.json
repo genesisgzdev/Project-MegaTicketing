@@ -34,8 +34,8 @@
   "refresh": "5s",
   "schemaVersion": 36,
   "style": "dark",
-  "tags": ["industrial", "edr-protected"],
+  "tags": ["production", "edr-protected"],
   "templating": { "list": [] },
   "time": { "from": "now-1h", "to": "now" },
-  "title": "MegaTicketing: Industrial Operations Center"
+  "title": "MegaTicketing: production Operations Center"
 }

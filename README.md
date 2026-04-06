@@ -1,6 +1,6 @@
 # MegaTicketing
 
-Monorepo for high-concurrency event ticketing. Features distributed consistency and integrated security telemetry.
+Decoupled monorepo for high-concurrency event ticketing. Features distributed consistency and integrated security telemetry.
 
 ## System Architecture
 
