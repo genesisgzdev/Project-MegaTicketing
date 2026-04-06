@@ -1,39 +1,56 @@
 networks:
-  megaticketing-net:
+  frontend-net:
     driver: bridge
+  backend-net:
+    driver: bridge
+
+volumes:
+  postgres_data:
 
 services:
   db:
     image: postgres:16-alpine
-    restart: always
+    restart: unless-stopped
     environment:
       POSTGRES_USER: ${DB_USER:-postgres}
       POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be set}
       POSTGRES_DB: ${DB_NAME:-megaticketing}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
       timeout: 5s
       retries: 5
     networks:
-      - megaticketing-net
+      - backend-net
 
   redis:
     image: redis:7-alpine
-    restart: always
+    restart: unless-stopped
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 3s
       retries: 5
     networks:
-      - megaticketing-net
+      - backend-net
+
+  # Jaeger for distributed tracing visualization
+  jaeger:
+    image: jaegertracing/all-in-one:1.55
+    restart: unless-stopped
+    ports:
+      - "16686:16686" # Web UI
+      - "4317:4317"   # OTLP gRPC
+    networks:
+      - backend-net
 
   api:
     build:
       context: .
       dockerfile: apps/api/Dockerfile
-    restart: on-failure
+    restart: unless-stopped
     deploy:
       replicas: 3
     environment:
@@ -44,32 +61,37 @@ services:
       - DATABASE_URL=postgresql://${DB_USER:-postgres}:${DB_PASSWORD:?DB_PASSWORD must be set}@db:5432/${DB_NAME:-megaticketing}?schema=public
       - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:?STRIPE_SECRET_KEY must be set}
       - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set}
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4317
+      - GCP_PROJECT_ID=${GCP_PROJECT_ID:-development-project}
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
+      jaeger:
+        condition: service_started
     networks:
-      - megaticketing-net
+      - backend-net
 
   web:
     build:
       context: .
       dockerfile: apps/web/Dockerfile
-    restart: always
-    ports:
-      - "80:80"
+    restart: unless-stopped
     networks:
-      - megaticketing-net
+      - frontend-net
 
   gateway:
     image: nginx:alpine
-    restart: always
+    restart: unless-stopped
     ports:
-      - "3001:80"
+      - "80:80"
+      - "3001:80" # Mapping legacy API port to gateway
     volumes:
       - ./infra/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
     depends_on:
       - api
+      - web
     networks:
-      - megaticketing-net
+      - frontend-net
+      - backend-net

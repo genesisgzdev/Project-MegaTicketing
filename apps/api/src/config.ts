@@ -10,6 +10,8 @@ const configSchema = z.object({
   STRIPE_WEBHOOK_SECRET: z.string().optional(),
   DATABASE_URL: z.string().min(1, 'Database URL is required'),
   JWT_SECRET: z.string().min(32, 'JWT Secret must be at least 32 characters'),
+  GCP_PROJECT_ID: z.string().optional(),
+  PUBSUB_ORDERS_TOPIC: z.string().default('orders-topic'),
 });
 
 export const config = configSchema.parse(process.env);

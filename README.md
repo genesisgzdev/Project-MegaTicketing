@@ -32,10 +32,13 @@ The repository follows a modern **Monorepo** structure managed by **Turbo**, ens
 
 ```mermaid
 graph TD
-    A[Frontend: React 18 + Vite] -->|WebSocket / REST| B[Backend: Fastify API]
+    A[Frontend: React 18 + Vite] -->|WebSocket / REST| G[Gateway: Nginx]
+    G -->|Load Balance| B[Backend: Fastify API x3]
     B -->|Lua Scripting| C[Distributed Lock: Redis]
     B -->|Prisma ORM| D[Persistence: PostgreSQL]
     B -->|Stripe API| E[Payment Gateway]
+    B -->|Async Events| H[Google Cloud Pub/Sub]
+    B -->|Tracing| I[OpenTelemetry / Jaeger]
     F[Shared Packages: Zod Schemas] --> A
     F --> B
 ```
@@ -53,17 +56,19 @@ graph TD
 ### 1. Atomic Transactionality (Redis + Lua)
 We utilize custom Lua scripts executed directly within the Redis engine to ensure that the "Check-then-Set" logic for seat availability is truly atomic across distributed instances.
 
-### 2. High-Availability (HA) Design
-- **Stateless API Instances**: Scalable horizontally via Docker.
-- **Load Balancing**: Integrated Nginx gateway for traffic distribution across API replicas.
-- **WebSocket Synchronization**: Live broadcast of seat status updates to all connected clients.
+### 2. Distributed Tracing (OpenTelemetry)
+Full observability via OpenTelemetry. Every request is traced across the Gateway, API, Redis, and Database, providing deep insights into system performance and bottleneck identification.
+
+### 3. Asynchronous Order Processing
+Integration with **Google Cloud Pub/Sub** ensures that seat reservations are fast and non-blocking. Downstream processes (billing, notification) are handled asynchronously.
 
 ---
 
 ## 🛠 Tech Stack & Tooling
 
-- **Backend**: Fastify 5.x, WebSockets, Prisma, Redis, Stripe API.
+- **Backend**: Fastify 5.x, WebSockets, Prisma, Redis, Stripe API, Google Cloud Pub/Sub.
 - **Frontend**: React 18, Vite 5, Tailwind CSS 3, Framer Motion.
+- **Observability**: OpenTelemetry, Jaeger, Prometheus, Grafana.
 - **Database**: PostgreSQL (Production), SQLite (Development).
 - **Quality**: Zod, Snyk, Autocannon, Playwright.
 
@@ -72,9 +77,10 @@ We utilize custom Lua scripts executed directly within the Redis engine to ensur
 ## 🔐 Security Hardening & Integrity
 
 - **Cryptographic Standards**: JWT implementation using **`jose`** for robust JWS/JWE handling.
-- **Rate Limiting**: Sliding-window rate limiting via `@fastify/rate-limit`.
-- **Environment Strictness**: Boot-time validation of environment variables via Zod.
-- **SAST/SCA**: Integrated **Snyk** auditing in the development lifecycle via Git Hooks and CI/CD.
+- **Advanced Fraud Detection**: Real-time velocity checks and pattern matching to prevent bot-driven bulk reservations.
+- **Environment Strictness**: Boot-time validation of environment variables via Zod. Mandatory secrets in Docker Compose.
+- **SAST/SCA**: Integrated **[Snyk](https://github.com/genesisgzdev/Project-MegaTicketing/security/code-scanning)** auditing in the development lifecycle via Git Hooks and CI/CD.
+- **Vulnerability Shield**: Continuous monitoring using OSV-Scanner and automated dependency auditing.
 
 ---
 
@@ -82,14 +88,15 @@ We utilize custom Lua scripts executed directly within the Redis engine to ensur
 
 ### Docker Orchestration
 The project includes a production-ready `docker-compose.yml` with:
-- PostgreSQL persistence.
-- Redis with health checks.
-- Scaled API replicas (3x).
-- Nginx Gateway as a Load Balancer.
-- Frontend Web service.
+- **PostgreSQL 16** persistence.
+- **Redis 7** with health checks.
+- **Jaeger** for trace visualization.
+- Scaled **API replicas (3x)**.
+- **Nginx Gateway** as a Load Balancer.
+- **Frontend Web** service.
 
 ```bash
-# Start the full stack
+# Start the full stack (Ensure .env is configured)
 docker compose up -d
 ```
 
@@ -110,7 +117,7 @@ Variables required: `project_id`, `region`.
    ```bash
    git clone https://github.com/genesisgzdev/Project-MegaTicketing.git
    cd Project-MegaTicketing
-   cp .env.example .env # Configure your secrets
+   cp .env.example .env # Configure your secrets (JWT_SECRET & STRIPE_SECRET_KEY are mandatory)
    npm install --legacy-peer-deps
    ```
 
@@ -128,17 +135,18 @@ Variables required: `project_id`, `region`.
 ---
 
 ## 🗺 Roadmap
-- [ ] Implement Distributed Tracing with OpenTelemetry.
+- [x] Implement Distributed Tracing with OpenTelemetry.
+- [x] Integration with Google Cloud Pub/Sub for asynchronous order processing.
+- [x] Advanced Fraud Detection module.
 - [ ] Add support for Multi-Region Database Replication.
-- [ ] Integration with Google Cloud Pub/Sub for asynchronous order processing.
-- [ ] Advanced Fraud Detection module.
+- [ ] Integration with Google Cloud Key Management Service (KMS).
 
 ---
 
 ## ⚠️ Known Limitations
 - **Memory Usage**: High concurrency seat maps in React Three Fiber may be resource-intensive on low-end devices.
 - **Stripe Webhooks**: Requires a local tunnel (e.g., Cloudflare Tunnel or ngrok) for local development testing.
-- **Database**: Development environment defaults to SQLite for simplicity; PostgreSQL is mandatory for production replicas.
+- **Database Availability**: Current setup uses a single-instance PostgreSQL; multi-region replication is in the roadmap.
 
 ---
-*Developed with technical integrity and anti-evasion mindset. No simulations.*
+*Developed with technical integrity and anti-evasion mindset. Zero polling. Zero simulations.*
