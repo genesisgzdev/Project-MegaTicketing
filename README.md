@@ -1,6 +1,6 @@
 # MegaTicketing
 
-Decoupled monorepo for high-concurrency event ticketing. Features distributed consistency and integrated security telemetry.
+Monorepo for high-concurrency event ticketing. Features distributed consistency and integrated security telemetry.
 
 ## System Architecture
 
@@ -8,17 +8,17 @@ The monorepo utilizes a shared-nothing backend design for horizontal scalability
 
 ```mermaid
 graph TD
-    subgraph Frontend [Client Layer]
+    subgraph "Client Layer"
         A[React 18 Application]
     end
-    subgraph Gateway [Entry Point]
+    subgraph "Entry Point"
         G[Nginx Gateway]
     end
-    subgraph Backend [Service Layer]
+    subgraph "Service Layer"
         B[Fastify API Cluster]
         H[GCP Pub/Sub]
     end
-    subgraph Data [Consistency Layer]
+    subgraph "Consistency Layer"
         C[Redis Distributed Lock]
         D[PostgreSQL Database]
         E[Stripe API]
