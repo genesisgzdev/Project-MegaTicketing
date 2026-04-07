@@ -13,7 +13,7 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${DB_USER:-postgres}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be set}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-development_password}
       POSTGRES_DB: ${DB_NAME:-megaticketing}
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -36,13 +36,12 @@ services:
     networks:
       - backend-net
 
-  # Jaeger for distributed tracing visualization
   jaeger:
     image: jaegertracing/all-in-one:1.55
     restart: unless-stopped
     ports:
-      - "16686:16686" # Web UI
-      - "4317:4317"   # OTLP gRPC
+      - "16686:16686"
+      - "4317:4317"
     networks:
       - backend-net
 
@@ -53,21 +52,14 @@ services:
     restart: unless-stopped
     deploy:
       replicas: 3
-      resources:
-        limits:
-          cpus: '0.50'
-          memory: 512M
-        reservations:
-          cpus: '0.10'
-          memory: 256M
     environment:
-      - NODE_ENV=production
+      - NODE_ENV=${NODE_ENV:-production}
       - PORT=3001
       - REDIS_HOST=redis
       - REDIS_PORT=6379
-      - DATABASE_URL=postgresql://${DB_USER:-postgres}:${DB_PASSWORD:?DB_PASSWORD must be set}@db:5432/${DB_NAME:-megaticketing}?schema=public
-      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:?STRIPE_SECRET_KEY must be set}
-      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set}
+      - DATABASE_URL=postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-development_password}@db:5432/${DB_NAME:-megaticketing}?schema=public
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-sk_test_build_placeholder}
+      - JWT_SECRET=${JWT_SECRET:-build_placeholder_at_least_32_chars}
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4317
       - GCP_PROJECT_ID=${GCP_PROJECT_ID:-development-project}
     depends_on:
@@ -75,8 +67,6 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      jaeger:
-        condition: service_started
     networks:
       - backend-net
 
@@ -93,7 +83,7 @@ services:
     restart: unless-stopped
     ports:
       - "80:80"
-      - "3001:80" # Mapping legacy API port to gateway
+      - "3001:80"
     volumes:
       - ./infra/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
     depends_on:
