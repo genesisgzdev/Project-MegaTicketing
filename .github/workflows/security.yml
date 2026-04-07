@@ -8,7 +8,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Install System Dependencies
         continue-on-error: true
         run: sudo apt-get update -y && sudo apt-get install -y openssl
@@ -21,7 +21,7 @@ jobs:
       - name: Install Monorepo Dependencies
         continue-on-error: true
         run: npm install --legacy-peer-deps || true
-        
+
       - name: Generate Database Client
         continue-on-error: true
         run: npm run db:generate --prefix packages/database || true
@@ -41,21 +41,21 @@ jobs:
     needs: security-audit
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Build and Run Cluster
         continue-on-error: true
         run: |
           docker compose up -d --build || true
           sleep 10
-          
+
       - name: Performance & Consistency Load Test
         continue-on-error: true
         run: |
           npx --yes autocannon -c 10 -d 5 -m POST \
-            -H "Content-Type=application/json" \
+            -H "Content-Type: application/json" \
             -b '{"seatId":"550e8400-e29b-41d4-a716-446655440000","eventId":"550e8400-e29b-41d4-a716-446655440001","userId":"550e8400-e29b-41d4-a716-446655440002"}' \
             http://localhost:3001/reserve || true
-            
+
       - name: Shutdown Cluster
         if: always()
         continue-on-error: true
