@@ -36,15 +36,6 @@ services:
     networks:
       - backend-net
 
-  jaeger:
-    image: jaegertracing/all-in-one:1.55
-    restart: unless-stopped
-    ports:
-      - "16686:16686"
-      - "4317:4317"
-    networks:
-      - backend-net
-
   api:
     build:
       context: .
@@ -58,10 +49,8 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - DATABASE_URL=postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-development_password}@db:5432/${DB_NAME:-megaticketing}?schema=public
-      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-sk_test_build_placeholder}
-      - JWT_SECRET=${JWT_SECRET:-build_placeholder_at_least_32_chars}
-      - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4317
-      - GCP_PROJECT_ID=${GCP_PROJECT_ID:-development-project}
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-sk_test_placeholder}
+      - JWT_SECRET=${JWT_SECRET:-placeholder_at_least_32_chars}
     depends_on:
       db:
         condition: service_healthy

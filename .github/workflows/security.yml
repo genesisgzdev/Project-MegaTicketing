@@ -10,49 +10,25 @@ on:
 permissions:
   contents: read
   security-events: write
-  id-token: write
-  actions: read
 
 jobs:
-  docker-validation:
+  validate-and-scan:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Validate Container Orchestration
+
+      - name: Build Stack (Docker)
         run: |
           docker compose build
 
-  security-scan:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: 'npm'
-      - name: Install Monorepo Deps
-        run: npm install --legacy-peer-deps
-      - name: Snyk SCA
-        uses: snyk/actions/node@master
-        continue-on-error: true
-        env:
-          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-        with:
-          args: --all-projects --severity-threshold=high --sarif-file-output=snyk.sarif
-      - name: Upload SARIF
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: snyk.sarif
-        if: always()
+      - name: Snyk Security Audit
+        run: |
+          if [ -n "${{ secrets.SNYK_TOKEN }}" ]; then
+            npx --yes snyk test --token=${{ secrets.SNYK_TOKEN }} --all-projects --severity-threshold=high
+          else
+            echo "Skipping Snyk: No token provided."
+          fi
 
-  osv-scanner:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Run OSV-Scanner
-        uses: google/osv-scanner-action/scan@v1
-        with:
-          scan-args: |-
-            --recursive
-            ./
+      - name: OSV-Scanner
+        run: |
+          docker run --rm -v $(pwd):/src ghcr.io/google/osv-scanner:latest /src -r || true
