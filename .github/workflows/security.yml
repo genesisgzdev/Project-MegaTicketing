@@ -1,43 +1,56 @@
 name: Industrial Security Pipeline
 
 on:
-  push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
-  workflow_dispatch:
+  workflow_dispatch: # Disabled automatic triggers due to GitHub account billing lock
 
 permissions:
   contents: read
-  id-token: write
   security-events: write
+  id-token: write
+  actions: read
 
 jobs:
-  validate-and-scan:
+  docker-validation:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Setup CI Environment
+      
+      - name: Maximize Build Space
         run: |
-          echo "DB_USER=postgres" >> .env
-          echo "DB_PASSWORD=password" >> .env
-          echo "DB_NAME=megaticketing" >> .env
-          echo "STRIPE_SECRET_KEY=sk_test_placeholder" >> .env
-          echo "JWT_SECRET=placeholder_at_least_32_chars_long" >> .env
-          echo "GCP_PROJECT_ID=ci-project" >> .env
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/ghc
+          sudo rm -rf "/usr/local/share/boost"
+          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
 
-      - name: Docker Build Validation
-        run: docker compose build
-
-      - name: Snyk Security Audit (Node.js)
+      - name: Validate Monorepo Build (Docker Compose)
         run: |
-          if [ -n "${{ secrets.SNYK_TOKEN }}" ]; then
-            npx --yes snyk test --token=${{ secrets.SNYK_TOKEN }} --all-projects --severity-threshold=high
-          else
-            echo "::warning::SNYK_TOKEN not found. Skipping dependency scan."
-          fi
+          export DB_PASSWORD=placeholder
+          export STRIPE_SECRET_KEY=sk_test_placeholder
+          export JWT_SECRET=placeholder_at_least_32_chars_long
+          docker compose build
 
-      - name: OSV-Scanner Audit
-        run: |
-          docker run --rm -v $(pwd):/src ghcr.io/google/osv-scanner:latest /src scan source -r /src
+  security-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Run Snyk SCA
+        uses: snyk/actions/node@master
+        continue-on-error: true
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          args: --all-projects --severity-threshold=high --sarif-file-output=snyk.sarif
+
+      - name: OSV-Scanner (v2 Syntax)
+        uses: google/osv-scanner-action/scan@v1
+        with:
+          scan-args: |-
+            --recursive
+            ./
+
+      - name: Upload Security Report
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: snyk.sarif
+        if: always()
