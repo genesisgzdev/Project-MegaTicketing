@@ -1,4 +1,4 @@
-name: Industrial Security Pipeline 2026
+name: Industrial Security Pipeline
 
 on:
   push:
@@ -11,43 +11,33 @@ permissions:
   contents: read
   id-token: write
   security-events: write
-  actions: read
 
 jobs:
-  docker-validation:
+  validate-and-scan:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Validate Container Orchestration
+
+      - name: Setup CI Environment
         run: |
-          export DB_PASSWORD=placeholder
-          export STRIPE_SECRET_KEY=sk_test_placeholder
-          export JWT_SECRET=placeholder_at_least_32_chars_long
-          docker compose build
+          echo "DB_USER=postgres" >> .env
+          echo "DB_PASSWORD=password" >> .env
+          echo "DB_NAME=megaticketing" >> .env
+          echo "STRIPE_SECRET_KEY=sk_test_placeholder" >> .env
+          echo "JWT_SECRET=placeholder_at_least_32_chars_long" >> .env
+          echo "GCP_PROJECT_ID=ci-project" >> .env
 
-  snyk-sca-audit:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-      - name: Setup Snyk
-        uses: snyk/actions/setup@master
-        with:
-          snyk-version: 'latest'
-      - name: Run Snyk SCA
-        run: snyk test --all-projects --severity-threshold=high
-        env:
-          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-          SNYK_OIDC_ENABLED: true
+      - name: Docker Build Validation
+        run: docker compose build
 
-  osv-scan:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Run OSV-Scanner (v2 Syntax)
-        uses: google/osv-scanner-action/scan@v1
-        with:
-          scan-args: "scan source -r ./"
+      - name: Snyk Security Audit (Node.js)
+        run: |
+          if [ -n "${{ secrets.SNYK_TOKEN }}" ]; then
+            npx --yes snyk test --token=${{ secrets.SNYK_TOKEN }} --all-projects --severity-threshold=high
+          else
+            echo "::warning::SNYK_TOKEN not found. Skipping dependency scan."
+          fi
+
+      - name: OSV-Scanner Audit
+        run: |
+          docker run --rm -v $(pwd):/src ghcr.io/google/osv-scanner:latest /src scan source -r /src
