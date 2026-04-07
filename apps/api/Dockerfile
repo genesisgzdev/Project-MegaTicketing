@@ -1,4 +1,4 @@
-﻿FROM node:20-slim AS build
+FROM node:20-slim AS build
 WORKDIR /usr/src/app
 RUN apt-get update -y && apt-get install -y openssl
 COPY package*.json ./
@@ -19,6 +19,6 @@ COPY --from=build /usr/src/app/apps/api/dist ./dist
 COPY --from=build /usr/src/app/apps/api/package*.json ./
 COPY --from=build /usr/src/app/node_modules ./node_modules
 EXPOSE 3000
-CMD [ "node", "dist/index.js" ]
+CMD [ "node", "dist/apps/api/src/index.js" ]
 
 
