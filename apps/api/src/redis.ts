@@ -41,6 +41,7 @@ redis.defineCommand('releaseLockAtomic', {
 
 /**
  * Attempts to acquire a distributed lock for a specific seat.
+ * Also appends a reservation event to a Redis Stream for real-time updates.
  * @param eventId - Unique identifier for the event
  * @param seatId - Unique identifier for the seat
  * @param userId - Owner of the lock request
@@ -49,11 +50,18 @@ redis.defineCommand('releaseLockAtomic', {
 export const lockSeat = async (eventId: string, seatId: string, userId: string): Promise<boolean> => {
   const lockKey = `lock:event:${eventId}:seat:${seatId}`;
   const result = await redis.set(lockKey, userId, 'PX', 30000, 'NX');
+  
+  if (result === 'OK') {
+    const streamKey = `stream:event:${eventId}`;
+    await redis.xadd(streamKey, '*', 'seatId', seatId, 'userId', userId, 'status', 'RESERVED');
+  }
+  
   return result === 'OK';
 };
 
 /**
  * Releases a distributed lock atomically using Lua.
+ * Appends a release event to the Redis Stream.
  * @param eventId - Unique identifier for the event
  * @param seatId - Unique identifier for the seat
  * @param userId - The user ID that should own the lock
@@ -61,15 +69,25 @@ export const lockSeat = async (eventId: string, seatId: string, userId: string):
 export const releaseSeat = async (eventId: string, seatId: string, userId: string): Promise<boolean> => {
   const lockKey = `lock:event:${eventId}:seat:${seatId}`;
   const result = await (redis as any).releaseLockAtomic(lockKey, userId);
+  
+  if (result === 1) {
+    const streamKey = `stream:event:${eventId}`;
+    await redis.xadd(streamKey, '*', 'seatId', seatId, 'userId', userId, 'status', 'RELEASED');
+  }
+  
   return result === 1;
 };
 
 /**
  * Persistently marks a seat as PAID in Redis.
+ * Appends a paid event to the Redis Stream.
  */
 export const markSeatAsPaid = async (eventId: string, seatId: string): Promise<void> => {
   const statusKey = `seat:status:event:${eventId}:seat:${seatId}`;
   await redis.set(statusKey, 'PAID');
+  
+  const streamKey = `stream:event:${eventId}`;
+  await redis.xadd(streamKey, '*', 'seatId', seatId, 'status', 'PAID');
 };
 
 export default redis;
