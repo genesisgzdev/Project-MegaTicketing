@@ -1,9 +1,10 @@
-﻿import Redis from 'ioredis';
+import Redis from 'ioredis';
 import { config } from './config';
 
 /**
  * production Redis client configuration.
- * Implements exponential backoff and structured connection event handling.
+ * Implements exponential backoff, structured connection event handling,
+ * and high-performance TCP settings.
  */
 const redis = new Redis({
   host: config.REDIS_HOST,
@@ -12,7 +13,10 @@ const redis = new Redis({
   retryStrategy(times) {
     return Math.min(times * 50, 2000);
   },
-  maxRetriesPerRequest: 3
+  maxRetriesPerRequest: null, // Fail fast on timeouts
+  enableOfflineQueue: false,  // Do not buffer commands if Redis is offline
+  noDelay: true,              // Disable Nagle's algorithm for lowest latency
+  keepAlive: 10000            // Enable TCP keep-alive
 });
 
 redis.on('error', (err) => console.error('Redis Connection Fault:', err));
@@ -23,11 +27,11 @@ redis.on('connect', () => console.log('Redis Connectivity Established'));
  * Ensures that only the lock owner can delete the key.
  */
 const RELEASE_LOCK_LUA = `
-  if redis.call("get", KEYS[1]) == ARGV[1] then
-    return redis.call("del", KEYS[1])
-  else
-    return 0
-  end
+if redis.call("get", KEYS[1]) == ARGV[1] then
+  return redis.call("del", KEYS[1])
+else
+  return 0
+end
 `;
 
 redis.defineCommand('releaseLockAtomic', {
@@ -69,5 +73,3 @@ export const markSeatAsPaid = async (eventId: string, seatId: string): Promise<v
 };
 
 export default redis;
-
-

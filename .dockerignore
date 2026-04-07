@@ -1,0 +1,13 @@
+node_modules
+apps/api/node_modules
+apps/web/node_modules
+packages/database/node_modules
+packages/shared/node_modules
+dist
+apps/api/dist
+apps/web/dist
+packages/database/dist
+packages/shared/dist
+.git
+.gemini
+.env

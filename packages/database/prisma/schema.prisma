@@ -1,4 +1,4 @@
-﻿// Prisma schema for MegaTicketing
+// Prisma schema for MegaTicketing
 
 generator client {
   provider        = "prisma-client-js"
@@ -25,29 +25,36 @@ model Event {
   date        DateTime
   seats       Seat[]
   createdAt   DateTime @default(now())
+
+  @@index([date])
 }
 
 model Seat {
-  id        String   @id @default(uuid())
-  eventId   String
-  event     Event    @relation(fields: [eventId], references: [id])
-  code      String   // e.g., "A-12"
-  price     Decimal
-  isLocked  Boolean  @default(false)
-  lockedAt  DateTime?
-  ticket    Ticket?
+  id          String    @id @default(uuid())
+  eventId     String
+  event       Event     @relation(fields: [eventId], references: [id])
+  seatNumber  String    // e.g., "A-12"
+  price       Decimal
+  isLocked    Boolean   @default(false)
+  lockedAt    DateTime?
+  ticket      Ticket?
   
-  @@unique([eventId, code])
+  @@unique([eventId, seatNumber])
+  @@index([eventId, seatNumber])
+  @@index([eventId, isLocked])
 }
 
 model Ticket {
-  id        String   @id @default(uuid())
+  id        String       @id @default(uuid())
   userId    String
-  user      User     @relation(fields: [userId], references: [id])
-  seatId    String   @unique
-  seat      Seat     @relation(fields: [seatId], references: [id])
+  user      User         @relation(fields: [userId], references: [id])
+  seatId    String       @unique
+  seat      Seat         @relation(fields: [seatId], references: [id])
   status    TicketStatus @default(LOCKED)
-  createdAt DateTime @default(now())
+  createdAt DateTime     @default(now())
+
+  @@index([userId])
+  @@index([status])
 }
 
 enum TicketStatus {
@@ -55,4 +62,3 @@ enum TicketStatus {
   PAID
   CANCELLED
 }
-
