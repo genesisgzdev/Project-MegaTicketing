@@ -1,17 +1,14 @@
-﻿import './tracing';
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import websocket from '@fastify/websocket';
 import rateLimit from '@fastify/rate-limit';
-import metrics from 'fastify-metrics';
 import { config } from './config';
 import { ReservationController } from './controllers/reservation.controller';
 import { SecurityController } from './controllers/security.controller';
 import { HealthController } from './controllers/health.controller';
-import { WebhookController } from './controllers/webhook.controller';
 
 /**
- * production API Entrypoint.
+ * Industrial API Entrypoint.
  * Architecture: Controller/Service Pattern with High-Availability Redis Locking.
  */
 const server = Fastify({ 
@@ -23,9 +20,6 @@ const server = Fastify({
 server.register(cors);
 server.register(websocket);
 
-// Prometheus Instrumentation: Metrics exposure at /metrics
-server.register(metrics, { endpoint: '/metrics' });
-
 // Security Shield Configuration
 let defenseActive = false;
 server.register(rateLimit, {
@@ -35,30 +29,11 @@ server.register(rateLimit, {
 } as any);
 
 /**
- * Stripe Webhook Raw Body Handling.
- * Necessary for cryptographic signature validation.
- */
-server.addContentTypeParser('application/json', { parseAs: 'buffer' }, (req, body, done) => {
-  if (req.url === '/webhook') {
-    done(null, body);
-  } else {
-    try {
-      const json = JSON.parse(body.toString());
-      done(null, json);
-    } catch (err: any) {
-      err.statusCode = 400;
-      done(err, undefined);
-    }
-  }
-});
-
-/**
  * Route Registration - Production Grade Orchestration.
  */
 server.register(async (app) => {
   const reservationController = new ReservationController(app);
   const healthController = new HealthController();
-  const webhookController = new WebhookController(app);
   const securityController = new SecurityController(app, (status: boolean) => {
     defenseActive = status;
   });
@@ -66,7 +41,6 @@ server.register(async (app) => {
   // REST Interface
   app.post('/reserve', (req, rep) => reservationController.handleReservation(req, rep));
   app.get('/health', (req, rep) => healthController.getHealth(req, rep));
-  app.post('/webhook', (req, rep) => webhookController.handleStripeWebhook(req, rep));
 
   // Full-Duplex Real-time Security Hub
   app.get('/ws', { websocket: true }, (connection: any) => {
@@ -96,6 +70,3 @@ const start = async () => {
 };
 
 start();
-
-
-
