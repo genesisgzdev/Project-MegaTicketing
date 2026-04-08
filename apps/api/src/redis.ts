@@ -2,8 +2,8 @@ import Redis from 'ioredis';
 import { config } from './config';
 
 /**
- * Industrial-grade Redis client configuration.
- * Implements exponential backoff and structured connection event handling.
+ * production Redis client configuration.
+ * Implements exponential backoff and monotonic event streaming.
  */
 const redis = new Redis({
   host: config.REDIS_HOST,
@@ -12,22 +12,21 @@ const redis = new Redis({
   retryStrategy(times) {
     return Math.min(times * 50, 2000);
   },
-  maxRetriesPerRequest: 3
+  maxRetriesPerRequest: null,
+  enableOfflineQueue: false,
+  noDelay: true,
+  keepAlive: 10000
 });
 
 redis.on('error', (err) => console.error('Redis Connection Fault:', err));
 redis.on('connect', () => console.log('Redis Connectivity Established'));
 
-/**
- * Lua script for atomic lock release.
- * Ensures that only the lock owner can delete the key.
- */
 const RELEASE_LOCK_LUA = `
-  if redis.call("get", KEYS[1]) == ARGV[1] then
-    return redis.call("del", KEYS[1])
-  else
-    return 0
-  end
+if redis.call("get", KEYS[1]) == ARGV[1] then
+  return redis.call("del", KEYS[1])
+else
+  return 0
+end
 `;
 
 redis.defineCommand('releaseLockAtomic', {
@@ -35,21 +34,27 @@ redis.defineCommand('releaseLockAtomic', {
   lua: RELEASE_LOCK_LUA
 });
 
-/**
- * Attempts to acquire a distributed lock for a specific seat.
- */
 export const lockSeat = async (eventId: string, seatId: string, userId: string): Promise<boolean> => {
   const lockKey = `lock:event:${eventId}:seat:${seatId}`;
   const result = await redis.set(lockKey, userId, 'PX', 30000, 'NX');
+
+  if (result === 'OK') {
+    const streamKey = `stream:event:${eventId}`;
+    await redis.xadd(streamKey, '*', 'seatId', seatId, 'userId', userId, 'status', 'RESERVED');
+  }
+
   return result === 'OK';
 };
 
-/**
- * Releases a distributed lock atomically using Lua.
- */
-export const releaseSeat = async (eventId: string, seatId: string, userId: string): Promise<boolean> => {
+export const releaseSeat = async (eventId: string, seatId: string, userId: string): Promise<boolean> => {       
   const lockKey = `lock:event:${eventId}:seat:${seatId}`;
   const result = await (redis as any).releaseLockAtomic(lockKey, userId);
+
+  if (result === 1) {
+    const streamKey = `stream:event:${eventId}`;
+    await redis.xadd(streamKey, '*', 'seatId', seatId, 'userId', userId, 'status', 'RELEASED');
+  }
+
   return result === 1;
 };
 
