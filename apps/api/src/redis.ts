@@ -1,10 +1,6 @@
 import Redis from 'ioredis';
 import { config } from './config';
 
-/**
- * production Redis client configuration.
- * Implements exponential backoff and monotonic event streaming.
- */
 const redis = new Redis({
   host: config.REDIS_HOST,
   port: config.REDIS_PORT,
@@ -17,9 +13,6 @@ const redis = new Redis({
   noDelay: true,
   keepAlive: 10000
 });
-
-redis.on('error', (err) => console.error('Redis Connection Fault:', err));
-redis.on('connect', () => console.log('Redis Connectivity Established'));
 
 const RELEASE_LOCK_LUA = `
 if redis.call("get", KEYS[1]) == ARGV[1] then
@@ -37,24 +30,20 @@ redis.defineCommand('releaseLockAtomic', {
 export const lockSeat = async (eventId: string, seatId: string, userId: string): Promise<boolean> => {
   const lockKey = `lock:event:${eventId}:seat:${seatId}`;
   const result = await redis.set(lockKey, userId, 'PX', 30000, 'NX');
-
   if (result === 'OK') {
     const streamKey = `stream:event:${eventId}`;
     await redis.xadd(streamKey, '*', 'seatId', seatId, 'userId', userId, 'status', 'RESERVED');
   }
-
   return result === 'OK';
 };
 
 export const releaseSeat = async (eventId: string, seatId: string, userId: string): Promise<boolean> => {       
   const lockKey = `lock:event:${eventId}:seat:${seatId}`;
   const result = await (redis as any).releaseLockAtomic(lockKey, userId);
-
   if (result === 1) {
     const streamKey = `stream:event:${eventId}`;
     await redis.xadd(streamKey, '*', 'seatId', seatId, 'userId', userId, 'status', 'RELEASED');
   }
-
   return result === 1;
 };
 

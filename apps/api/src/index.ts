@@ -10,10 +10,6 @@ import { SecurityController } from './controllers/security.controller';
 import { HealthController } from './controllers/health.controller';
 import { WebhookController } from './controllers/webhook.controller';
 
-/**
- * production API Entrypoint.
- * Architecture: Controller/Service Pattern with High-Availability Redis Locking.
- */
 const server = Fastify({
   logger: {
     level: config.NODE_ENV === 'production' ? 'info' : 'debug'
@@ -22,11 +18,8 @@ const server = Fastify({
 
 server.register(cors);
 server.register(websocket);
-
-// Prometheus Instrumentation
 server.register(metrics, { endpoint: '/metrics' });
 
-// Security Shield Configuration
 let defenseActive = false;
 server.register(rateLimit, {
   max: 100,
@@ -34,9 +27,6 @@ server.register(rateLimit, {
   skip: () => !defenseActive
 } as any);
 
-/**
- * Stripe Webhook Raw Body Handling.
- */
 server.addContentTypeParser('application/json', { parseAs: 'buffer' }, (req, body, done) => {
   if (req.url === '/webhook') {
     done(null, body);
@@ -51,9 +41,6 @@ server.addContentTypeParser('application/json', { parseAs: 'buffer' }, (req, bod
   }
 });
 
-/**
- * Route Registration - Production Grade Orchestration.
- */
 server.register(async (app) => {
   const reservationController = new ReservationController(app);
   const healthController = new HealthController();
@@ -62,32 +49,24 @@ server.register(async (app) => {
     defenseActive = status;
   });
 
-  // REST Interface
   app.post('/reserve', (req, rep) => reservationController.handleReservation(req, rep));
   app.get('/health', (req, rep) => healthController.getHealth(req, rep));
   app.post('/webhook', (req, rep) => webhookController.handleStripeWebhook(req, rep));
 
-  // Full-Duplex Real-time Security Hub
   app.get('/ws', { websocket: true }, (connection: any) => {
     securityController.handleConnection(connection);
   });
 });
 
-/**
- * Fatal Error Protection Layer.
- */
 server.setErrorHandler((error: any, request, reply) => {
   server.log.error(error);
   reply.status(500).send({ status: 'error', code: 'INTERNAL_SERVER_FAULT' });
 });
 
-/**
- * Server Lifecycle Management.
- */
 const start = async () => {
   try {
     await server.listen({ port: config.PORT, host: '0.0.0.0' });
-    console.log(`[DEPLOYED] MegaTicketing API deployed on ${config.PORT}`);
+    console.log(`[DEPLOYED] MegaTicketing API v1.0.0 listening on ${config.PORT}`);
   } catch (err) {
     server.log.fatal(err as any);
     process.exit(1);
