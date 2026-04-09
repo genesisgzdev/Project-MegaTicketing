@@ -4,7 +4,7 @@ import React, { useMemo } from 'react';
  * CyberArena: High-performance seat grid component.
  * Utilizes useMemo to prevent unnecessary re-renders of the static grid structure.
  */
-export default function CyberArena() {
+const CyberArena = React.memo(() => {
   const gridSize = 400; // 20x20 grid
 
   const gridCells = useMemo(() => {

@@ -1,73 +1,77 @@
-﻿import { PubSub } from '@google-cloud/pubsub';
 import { FastifyBaseLogger } from 'fastify';
-import { config } from '../config';
+import redis from '../redis';
 
-/**
- * production Pub/Sub Service.
- * Orchestrates asynchronous order fulfillment streams with robust error handling and retries.
- */
 export class PubSubService {
-  private pubsub: PubSub;
-  private topicName: string;
+  private readonly streamName = 'stream:orders:reserved';
+  private readonly groupName = 'order_processors';
+  private readonly consumerName = `node_${process.pid}_${Date.now()}`;
 
   constructor(private logger: FastifyBaseLogger) {
-    this.pubsub = new PubSub({
-      projectId: config.GCP_PROJECT_ID,
-      // The SDK includes default retry logic for transient errors.
-      // We can further customize this if needed.
-    });
-    this.topicName = config.PUBSUB_ORDERS_TOPIC;
+    this.initConsumerGroup();
   }
 
-  /**
-   * Publishes a 'order.reserved' event to the processing pipeline.
-   * Includes exponential backoff retries via the Google Cloud SDK.
-   * @param payload - Data containing event, seat, and user IDs.
-   */
-  async publishOrderReserved(payload: { eventId: string; seatId: string; userId: string }): Promise<void> {
-    const data = JSON.stringify({
-      ...payload,
-      event: 'order.reserved',
-      version: '1.0.0',
-      occurredAt: new Date().toISOString()
-    });
-
-    const dataBuffer = Buffer.from(data);
-
+  private async initConsumerGroup() {
     try {
-      this.logger.debug({ topic: this.topicName, payload }, 'Attempting to publish message to Pub/Sub');
-      
-      const messageId = await this.pubsub
-        .topic(this.topicName)
-        .publishMessage({ 
-          data: dataBuffer,
-          attributes: {
-            eventId: payload.eventId,
-            userId: payload.userId,
-            seatId: payload.seatId,
-            origin: 'api-service'
-          }
-        });
+      await redis.xgroup('CREATE', this.streamName, this.groupName, '0', 'MKSTREAM');
+      this.logger.info(`Consumer Group '${this.groupName}' initialized on '${this.streamName}'`);
+    } catch (err: unknown) {
+      const error = err as Error;
+      if (!error.message.includes('BUSYGROUP')) {
+        this.logger.error(error, 'Failed to initialize Redis Consumer Group');
+      }
+    }
+    this.consumeLoop();
+    this.recoveryLoop();
+  }
 
-      this.logger.info({ messageId, topic: this.topicName, eventId: payload.eventId }, 'Order event streamed successfully');
-    } catch (error) {
-      // Professional logging with full error context
-      this.logger.error({ 
-        err: error, 
-        topic: this.topicName, 
-        payload,
-        message: (error as Error).message 
-      }, 'Critical Pub/Sub stream emission failure');
-
-      // In a real-world high-concurrency system, we would implement an Outbox Pattern here:
-      // 1. Save the message to a 'pending_messages' table in our DB.
-      // 2. A separate background worker would retry publishing these messages.
-      // For now, we ensure the failure is logged for DLQ/Manual intervention.
-      
-      // We don't rethrow to avoid failing the HTTP request if the reservation in DB/Redis was successful.
-      // The seat is already locked, so we prioritize UI responsiveness while relying on logging for consistency.
+  async publishOrderReserved(payload: Record<string, any>) {
+    try {
+      await redis.xadd(this.streamName, '*', 'payload', JSON.stringify(payload));
+    } catch (err) {
+      this.logger.error({ err, payload }, 'Critical failure: Could not append to Redis Stream');
+      throw err;
     }
   }
+
+  private async consumeLoop() {
+    while (true) {
+      try {
+        const result = await redis.xreadgroup('GROUP', this.groupName, this.consumerName, 'BLOCK', 5000, 'COUNT', 10, 'STREAMS', this.streamName, '>');
+        if (result) {
+          const messages = result[0][1];
+          for (const message of messages) {
+            const [messageId, fields] = message;
+            const payload = JSON.parse(fields[1]);
+            this.logger.info({ messageId, payload }, 'Processing reserved order...');
+            await redis.xack(this.streamName, this.groupName, messageId);
+          }
+        }
+      } catch (err) {
+        this.logger.error(err, 'Stream consumer error');
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+    }
+  }
+
+  private async recoveryLoop() {
+    setInterval(async () => {
+      try {
+        const pending = await redis.xpending(this.streamName, this.groupName, '-', '+', 100);
+        for (const p of pending) {
+          const [messageId, consumer, idleTime, deliveryCount] = p as any;
+          if (idleTime > 60000) {
+            this.logger.warn({ messageId, consumer, idleTime }, 'Claiming orphaned message');
+            const claimed = await redis.xclaim(this.streamName, this.groupName, this.consumerName, 60000, messageId);
+            if (claimed && claimed.length > 0) {
+              const payload = JSON.parse((claimed[0][1] as string[])[1]);
+              this.logger.info({ messageId, payload }, 'Processing recovered order...');
+              await redis.xack(this.streamName, this.groupName, messageId);
+            }
+          }
+        }
+      } catch (err) {
+        this.logger.error(err, 'DLQ recovery error');
+      }
+    }, 30000);
+  }
 }
-
-

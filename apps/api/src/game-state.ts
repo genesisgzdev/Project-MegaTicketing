@@ -15,7 +15,7 @@ export const getSystemHealth = async () => {
     const projectRoot = process.cwd();
     const scannerPath = process.env.SECURITY_SCANNER_PATH || 'osv-scanner';
     
-    // production check: avoid hardcoded local Windows paths
+    // Avoid hardcoded local Windows paths
     const { stdout } = await execAsync(`${scannerPath} scan source -r ${projectRoot} --format json`);
     const results = JSON.parse(stdout);
     

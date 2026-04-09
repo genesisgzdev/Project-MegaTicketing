@@ -1,14 +1,14 @@
 ﻿import { lockSeat, markSeatAsPaid } from '../redis';
 
 /**
- * ReservationService: Encapsulates production logic for seat availability and locking.
+ * ReservationService: Encapsulates logic for seat availability and locking.
  */
 export class ReservationService {
   /**
    * Attempts to reserve a seat using distributed locking.
    */
   async reserveSeat(eventId: string, seatId: string, userId: string): Promise<boolean> {
-    // production check: Ensure the lock is acquired atomically in Redis
+    // Ensure the lock is acquired atomically in Redis
     return await lockSeat(eventId, seatId, userId);
   }
 

@@ -4,7 +4,7 @@ import { OrbitControls, Stars, Float, Text, MeshDistortMaterial } from '@react-t
 import { Physics, useBox, useSphere } from '@react-three/cannon';
 import * as THREE from 'three';
 
-function FileNode({ position, name, isError }: any) {
+const FileNode = React.memo(({ position, name, isError }: { position: any, name: string, isError: boolean }) => {
   // Define a physical box
   const [ref, api] = useBox(() => ({ 
     mass: 1, 
@@ -52,7 +52,7 @@ function FileNode({ position, name, isError }: any) {
   );
 }
 
-function SecurityCore({ status }: any) {
+const SecurityCore = React.memo(({ status }: { status: string }) => {
   const [ref, api] = useSphere(() => ({ 
     type: 'Static', 
     args: [1], 
@@ -79,7 +79,7 @@ function SecurityCore({ status }: any) {
   );
 }
 
-function Ground() {
+const Ground = React.memo(() => {
   const [ref] = useBox(() => ({ 
     type: 'Static', 
     rotation: [-Math.PI / 2, 0, 0], 
@@ -93,6 +93,8 @@ function Ground() {
     </mesh>
   );
 }
+
+});
 
 export default function CyberArena() {
   const [sysStatus, setStatus] = useState('SECURE');

@@ -11,8 +11,8 @@ const ReserveSchema = z.object({
 });
 
 /**
- * ReservationController: Orchestrates the API lifecycle for seat bookings.
- * Handles high-concurrency reservation logic and downstream event streaming.
+ * ReservationController: Manages API lifecycle for seat bookings.
+ * Handles reservation logic and downstream event streaming.
  */
 export class ReservationController {
   private service: ReservationService;
@@ -33,7 +33,7 @@ export class ReservationController {
     try {
       const body = ReserveSchema.parse(request.body);
       
-      // 1. Advanced Fraud Detection (Velocity & Pattern Matching)
+      // 1. Fraud Detection (Velocity & Pattern Matching)
       const isFraudulent = await this.fraudService.detectFraud(request.ip, body.eventId);
       
       if (isFraudulent) {

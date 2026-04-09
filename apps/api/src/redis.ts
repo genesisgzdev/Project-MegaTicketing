@@ -1,93 +1,85 @@
 import Redis from 'ioredis';
 import { config } from './config';
 
-/**
- * production Redis client configuration.
- * Implements exponential backoff, structured connection event handling,
- * and high-performance TCP settings.
- */
+enum CircuitState { CLOSED, OPEN, HALF_OPEN }
+class RedisCircuitBreaker {
+  private state: CircuitState = CircuitState.CLOSED;
+  private failureCount: number = 0;
+  private nextAttempt: number = Date.now();
+  constructor(private maxFailures: number = 3, private resetTimeout: number = 10000) {}
+  async execute<T>(operation: () => Promise<T>, fallback: () => Promise<T>, maxRetries: number = 3, baseDelay: number = 100): Promise<T> {
+    if (this.state === CircuitState.OPEN) {
+      if (Date.now() > this.nextAttempt) this.state = CircuitState.HALF_OPEN;
+      else return fallback();
+    }
+    let attempt = 0;
+    while (attempt <= maxRetries) {
+      try {
+        const result = await operation();
+        this.failureCount = 0; this.state = CircuitState.CLOSED;
+        return result;
+      } catch (error) {
+        attempt++;
+        if (attempt > maxRetries) {
+          this.failureCount++;
+          if (this.failureCount >= this.maxFailures) {
+            this.state = CircuitState.OPEN; this.nextAttempt = Date.now() + this.resetTimeout;
+          }
+          return fallback();
+        }
+        await new Promise(resolve => setTimeout(resolve, baseDelay * Math.pow(2, attempt - 1)));
+      }
+    }
+    return fallback();
+  }
+}
+
+const redisBreaker = new RedisCircuitBreaker(3, 10000);
 const redis = new Redis({
-  host: config.REDIS_HOST,
-  port: config.REDIS_PORT,
-  password: config.REDIS_PASSWORD,
-  retryStrategy(times) {
-    return Math.min(times * 50, 2000);
-  },
-  maxRetriesPerRequest: null, // Fail fast on timeouts
-  enableOfflineQueue: false,  // Do not buffer commands if Redis is offline
-  noDelay: true,              // Disable Nagle's algorithm for lowest latency
-  keepAlive: 10000            // Enable TCP keep-alive
+  host: config.REDIS_HOST, port: config.REDIS_PORT, password: config.REDIS_PASSWORD,
+  retryStrategy(times) { return Math.min(times * 50, 2000); },
+  maxRetriesPerRequest: null, enableOfflineQueue: false, noDelay: true, keepAlive: 10000
 });
-
-redis.on('error', (err) => console.error('Redis Connection Fault:', err));
-redis.on('connect', () => console.log('Redis Connectivity Established'));
-
-/**
- * Lua script for atomic lock release.
- * Ensures that only the lock owner can delete the key.
- */
-const RELEASE_LOCK_LUA = `
-if redis.call("get", KEYS[1]) == ARGV[1] then
-  return redis.call("del", KEYS[1])
-else
-  return 0
-end
-`;
 
 redis.defineCommand('releaseLockAtomic', {
-  numberOfKeys: 1,
-  lua: RELEASE_LOCK_LUA
+  numberOfKeys: 1, lua: `if redis.call("get", KEYS[1]) == ARGV[1] then return redis.call("del", KEYS[1]) else return 0 end`
 });
 
-/**
- * Attempts to acquire a distributed lock for a specific seat.
- * Also appends a reservation event to a Redis Stream for real-time updates.
- * @param eventId - Unique identifier for the event
- * @param seatId - Unique identifier for the seat
- * @param userId - Owner of the lock request
- * @returns boolean - True if lock was acquired
- */
 export const lockSeat = async (eventId: string, seatId: string, userId: string): Promise<boolean> => {
-  const lockKey = `lock:event:${eventId}:seat:${seatId}`;
-  const result = await redis.set(lockKey, userId, 'PX', 30000, 'NX');
-  
-  if (result === 'OK') {
-    const streamKey = `stream:event:${eventId}`;
-    await redis.xadd(streamKey, '*', 'seatId', seatId, 'userId', userId, 'status', 'RESERVED');
-  }
-  
-  return result === 'OK';
+  return redisBreaker.execute(
+    async () => {
+      const lockKey = `lock:event:${eventId}:seat:${seatId}`;
+      const result = await redis.set(lockKey, userId, 'PX', 30000, 'NX');
+      if (result === 'OK') await redis.xadd(`stream:event:${eventId}`, '*', 'seatId', seatId, 'userId', userId, 'status', 'RESERVED');
+      return result === 'OK';
+    },
+    async () => { return false; }
+  );
 };
 
-/**
- * Releases a distributed lock atomically using Lua.
- * Appends a release event to the Redis Stream.
- * @param eventId - Unique identifier for the event
- * @param seatId - Unique identifier for the seat
- * @param userId - The user ID that should own the lock
- */
 export const releaseSeat = async (eventId: string, seatId: string, userId: string): Promise<boolean> => {
-  const lockKey = `lock:event:${eventId}:seat:${seatId}`;
-  const result = await (redis as any).releaseLockAtomic(lockKey, userId);
-  
-  if (result === 1) {
-    const streamKey = `stream:event:${eventId}`;
-    await redis.xadd(streamKey, '*', 'seatId', seatId, 'userId', userId, 'status', 'RELEASED');
-  }
-  
-  return result === 1;
+  return redisBreaker.execute(
+    async () => {
+      const lockKey = `lock:event:${eventId}:seat:${seatId}`;
+      const result = await (redis as any).releaseLockAtomic(lockKey, userId);
+      if (result === 1) await redis.xadd(`stream:event:${eventId}`, '*', 'seatId', seatId, 'userId', userId, 'status', 'RELEASED');
+      return result === 1;
+    },
+    async () => { return false; }
+  );
 };
 
-/**
- * Persistently marks a seat as PAID in Redis.
- * Appends a paid event to the Redis Stream.
- */
-export const markSeatAsPaid = async (eventId: string, seatId: string): Promise<void> => {
-  const statusKey = `seat:status:event:${eventId}:seat:${seatId}`;
-  await redis.set(statusKey, 'PAID');
-  
-  const streamKey = `stream:event:${eventId}`;
-  await redis.xadd(streamKey, '*', 'seatId', seatId, 'status', 'PAID');
+export const markSeatAsPaid = async (eventId: string, seatId: string): Promise<boolean> => {
+  return redisBreaker.execute(
+    async () => {
+      const statusKey = `seat:status:event:${eventId}:seat:${seatId}`;
+      await redis.set(statusKey, 'PAID', 'EX', 86400); 
+      await redis.xadd(`stream:event:${eventId}`, '*', 'seatId', seatId, 'status', 'PAID');
+      return true;
+    },
+    async () => { return false; }
+  );
 };
 
+export { RedisCircuitBreaker };
 export default redis;

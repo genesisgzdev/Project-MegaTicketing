@@ -27,14 +27,14 @@ export class WebhookController {
         sig,
         config.STRIPE_WEBHOOK_SECRET || ''
       );
-    } catch (err: any) {
+    } catch (err: unknown) {
       this.app.log.error(`Webhook Signature Error: ${err.message}`);
       return reply.status(400).send(`Webhook Error: ${err.message}`);
     }
 
-    // Handle specific production event types
+    // Handle specific event types
     if (event.type === 'payment_intent.succeeded') {
-      const paymentIntent = event.data.object as any;
+      const paymentIntent = event.data.object as import('stripe').Stripe.PaymentIntent;
       const { eventId, seatId } = paymentIntent.metadata;
 
       if (eventId && seatId) {

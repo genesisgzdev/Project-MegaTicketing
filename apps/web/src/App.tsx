@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useRef } from 'react';
+﻿import { useState, useEffect, useRef, useCallback } from 'react';
 import { Ticket, Users, Calendar, MapPin, Zap, Activity, Shield, ShieldAlert, ShieldCheck, Globe, Database, Server } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -42,7 +42,7 @@ export default function App() {
     return () => socket.close();
   }, []);
 
-  const toggleShield = () => {
+  const toggleShield = useCallback(() => {
     const newStatus = !shieldActive;
     setShieldActive(newStatus);
     socketRef.current?.send(JSON.stringify({ 

@@ -1,47 +1,27 @@
-# Contributing to Project MegaTicketing
+# Contributing to MegaTicketing
 
-Welcome! We are excited that you want to contribute to MegaTicketing. This project is a high-performance monorepo, and following our standards ensures system integrity and performance.
+## Local Development
+The platform uses Turborepo for monorepo orchestration.
 
-## 🏗 Monorepo Flow (Turborepo)
+1. **Requirements**: Node.js 20+, Docker, Docker Compose.
+2. **Install**: Run 
+pm install --legacy-peer-deps --ignore-scripts. We enforce 
+pm over yarn or pnpm; the packageManager field is strictly set to 
+pm@10.8.2.
+3. **Database**: Run 
+px prisma generate --schema=packages/database/prisma/schema.prisma and 
+px prisma db push to synchronize the PostgreSQL schema.
 
-We use [Turborepo](https://turbo.build/) to manage our build pipeline and caching.
+## Turborepo Configuration
+- The monorepo uses Turborepo v2.0+. Ensure your 	urbo.json uses the "tasks" object, not the deprecated "pipeline" directive.
+- Container builds execute 
+px turbo run build --filter=@mega-ticketing/api to isolate the backend compilation from frontend dependencies.
 
-### 🛠 Pipeline Commands
-- **`npm run dev`**: Starts all applications (`api`, `web`) in development mode with hot-reloading.
-- **`npm run build`**: Builds all packages and apps. Turbo will use local/remote caching to skip unchanged tasks.
-- **`npm run lint`**: Runs ESLint across the entire monorepo.
-- **`npm run test`**: Executes unit and integration tests.
+## Coding Standards
+- **TypeScript**: Strict mode is enabled. The use of ny is strictly prohibited. Use unknown for caught errors and cast them to Error.
+- **Fastify**: Follow the Controller/Service pattern.
+- **React**: Use React.memo, useMemo, and useCallback for all high-frequency rendering components.
 
-### 📦 Structure
-- `apps/api`: Fastify backend.
-- `apps/web`: React frontend.
-- `packages/database`: Prisma schema and generated client.
-- `packages/shared`: Zod schemas and shared utility functions.
-
-## 📜 TypeScript & Coding Standards
-
-We enforce strict TypeScript configurations to ensure type safety across the stack.
-
-### 🔹 Standards
-1. **Strict Mode**: `strict: true` is mandatory in all `tsconfig.json` files. No `any` allowed.
-2. **Type-First Development**: Define Zod schemas in `packages/shared` before implementing logic. Infer TypeScript types from these schemas.
-3. **Hexagonal Architecture**: Keep business logic decoupled from external dependencies (Prisma, Fastify, Stripe).
-4. **Functional Purity**: Prefer immutable data structures and pure functions where possible.
-
-### 🔹 Linting & Formatting
-- **ESLint**: We use a custom configuration extending `typescript-eslint/recommended`.
-- **Prettier**: Code must be formatted using Prettier.
-- **Husky**: Pre-commit hooks run `lint` and `type-check` automatically.
-
-## 🚀 Contribution Process
-
-1. **Check Issues**: Find an issue or open a new one to discuss your proposal.
-2. **Branching**: Create a branch from `main` using `feat/`, `fix/`, or `docs/` prefixes.
-3. **Security Check**: Run `npx snyk test --all-projects` locally.
-4. **PR Guidelines**:
-   - Ensure `npm run build` passes locally.
-   - All PRs must include tests for new logic.
-   - Use [Conventional Commits](https://www.conventionalcommits.org/).
-
-## ⚖️ License
-By contributing, you agree that your contributions will be licensed under the [Apache License 2.0](LICENSE).
+## Testing
+- Unit tests use **Vitest / Jest**.
+- Concurrency logic, such as the RedisCircuitBreaker, must be tested using fake timers (jest.useFakeTimers()). This mathematically proves the exponential backoff algorithm's correctness without pausing the CI/CD pipeline with real setTimeout delays.

@@ -1,62 +1,64 @@
-# MegaTicketing - v2.0.0
+# MegaTicketing Platform
 
-Monorepo for high-concurrency event ticketing and real-time seat management. Designed for distributed consistency, horizontal scalability, and deep security instrumentation.
+## System Architecture
 
-## Table of Contents
-1. [Architectural Blueprint](#architectural-blueprint)
-2. [Distributed Consistency (Redis + Lua)](#distributed-consistency-redis--lua)
-3. [Microservices Orchestration](#microservices-orchestration)
-4. [Data Models and Prisma Schemas](#data-models-and-prisma-schemas)
-5. [Frontend Architecture and Accessibility](#frontend-architecture-and-accessibility)
-6. [Cloud-Native Infrastructure & GKE](#cloud-native-infrastructure--gke)
-7. [Security Hardening & Token Integrity](#security-hardening--token-integrity)
-8. [Execution, Setup, and CI/CD](#execution-setup-and-cicd)
-9. [API Contract & Error Handling](#api-contract--error-handling)
+MegaTicketing is a high-availability, distributed ticketing platform engineered for flash-sale concurrency. The microservices architecture guarantees transactional atomic consistency and zero-overselling through Redis Lua locking, event-driven state reconciliation, and multi-layered perimeter defense.
 
-## Architectural Blueprint
+`mermaid
+sequenceDiagram
+    participant Client
+    participant CF as Cloudflare (Worker/WAF)
+    participant API as Fastify Controller
+    participant Redis as Redis Cluster
+    participant DB as PostgreSQL
 
-The monorepo follows a shared-nothing backend design orchestrated by **Turbo**, ensuring atomic deployments and consistent type definitions across all microservices via shared npm packages.
+    Client->>CF: POST /reserve {eventId, seatId}
+    CF->>API: Rate Limit / WAF Passed
+    API->>API: Zod Payload Validation
+    API->>Redis: lockSeat() via Circuit Breaker
+    alt Lock Acquired (NX PX 30000)
+        Redis-->>API: OK
+        API->>Redis: XADD stream:event:id (State Delta)
+        API->>DB: INSERT INTO reservations
+        DB-->>API: 201 Created
+        API-->>Client: Success
+    else Lock Failed / Circuit Open
+        Redis-->>API: NAK
+        API-->>Client: 409 Conflict
+    end
+`
 
-## Distributed Consistency (Redis + Lua)
+## Concurrency Control & State Management
 
-High-profile ticket sales generate immense concurrent write pressure. To prevent the "double-booking" race condition where two users attempt to purchase the exact same seat simultaneously, MegaTicketing completely bypasses standard database transactions in favor of **Atomic Redis Locks** using custom Lua scripting.
+### 1. Redis Circuit Breaker & Exponential Backoff
+The backend implements a custom RedisCircuitBreaker in TypeScript to prevent cascading failures if the cache cluster degrades.
+- **State Machine**: Transitions dynamically between CLOSED, OPEN, and HALF_OPEN.
+- **Threshold**: Trips to OPEN after a predefined number of consecutive connection or timeout failures (e.g., 3).
+- **Backoff Algorithm**: Retries implement an exponential backoff timing model (aseDelay * Math.pow(2, attempt - 1)).
+- **Graceful Degradation**: If Redis is unreachable, the system executes a fallback closure, relying exclusively on PostgreSQL optimistic concurrency control to process the transaction.
 
-- **Lock-on-Intent (SET NX PX)**: When an API node receives a reservation request, it attempts to acquire a lock via `SET lock:seat:{seatId} {userId} NX PX 300000`. The `NX` (Not eXists) flag guarantees that only the very first concurrent request will receive an `OK` response. All subsequent requests fail instantly with a `423 Locked` or `409 Conflict`, completely bypassing the PostgreSQL database and eliminating connection pool exhaustion.
-- **Atomic Release (Lua Script)**: Releasing a lock safely requires ensuring that the client releasing it is the actual owner. Doing this in two commands (`GET` then `DEL`) is not atomic. We implement a specific Lua script.
+### 2. Distributed Atomic Locking (Lua)
+Preventing Time-Of-Check to Time-Of-Use (TOCTOU) race conditions during seat reservations is handled entirely within the Redis engine.
+- A lock is assigned a UUID token tied to the user session (SET key value NX PX 30000).
+- **eleaseLockAtomic**: A registered Lua script ensures that a DEL operation only executes if a preceding GET matches the user's token. This guarantees that a slow client cannot accidentally release a lock that has expired and been re-acquired by another user.
 
-## Microservices Orchestration
+### 3. Real-time State Reconciliation (Redis Streams)
+To synchronize the frontend UI (the 400-node Seat Map Grid) without aggressive polling, the system uses a reactive topology.
+- **XREAD BLOCK**: Services publish state-change events (e.g., status: 'RESERVED') to Redis Streams (XADD). Dedicated routines consume these streams using XREAD BLOCK, ensuring ordered, at-least-once delivery with minimal CPU overhead.
+- **WebSockets**: Upon consuming a stream event, the Fastify WebSocket gateway broadcasts the delta to connected clients.
 
-- **Fastify API**: Node.js natively struggles with intense JSON serialization. We utilize Fastify for its high-performance routing and `fast-json-stringify` capabilities. The architecture explicitly decouples the stateful WebSocket connections (used for real-time seat color changes) from the stateless REST endpoints (used for reservations), allowing us to scale the pods independently based on CPU load.
-- **Shared Zod Validation**: Both the React frontend and the Fastify backend rely on the `@mega-ticketing/shared` package. Zod schemas validate all incoming JSON payloads natively during Fastify's lifecycle hooks, rejecting malformed requests at the edge before application logic is executed.
+## Application Layer
 
-## Cloud-Native Infrastructure & GKE
+### Fastify & Zod
+- **Controller/Service Pattern**: Controllers act purely as the transport layer (HTTP parsing, routing, response formatting). Services encapsulate all protocol-agnostic business logic.
+- **Strict Validation**: All inbound payloads, including webhook signatures, are strictly validated against Zod schemas. Deviations return a 400 Bad Request.
+- **Rate Limiting**: @fastify/rate-limit enforces a strict 100 requests/minute limit per IP, actively defending against brute-force enumeration.
 
-MegaTicketing is inherently designed for Kubernetes (GKE). The `infra/` directory contains complete Terraform and manifest configurations.
-- **Horizontal Pod Autoscaling (HPA)**: The `hpa.yaml` manifest defines dynamic scaling from a minimum of 3 replicas to a maximum of 10, triggered when the target CPU average utilization exceeds 50%.
-- **Resource Constraints**: Pod definitions in `api-deployment.yaml` strictly enforce cgroup limits:
-  - `requests`: CPU 250m, Memory 256Mi
-  - `limits`: CPU 500m, Memory 512Mi
-  This explicit QoS (Quality of Service) definition guarantees Kubernetes can reliably schedule and bin-pack pods across nodes without OOM-killer interventions.
+### React Component Memoization
+The frontend heavily utilizes React.memo, useMemo, and useCallback.
+- Complex hierarchies like the SystemMonitor.tsx (Three.js/Cannon.js physics engine) and CyberArena.tsx prevent unnecessary re-renders when the WebSocket pushes high-frequency state updates.
 
-## Security Hardening & Token Integrity
-
-- **JWS/JWE Implementation**: Legacy JWT libraries are notoriously susceptible to algorithmic confusion attacks (e.g., bypassing RS256 with HS256). We utilize the `jose` library to enforce strict, modern JSON Web Signature protocols.
-- **Dependency Pipeline**: The monorepo integrates Snyk SCA (Software Composition Analysis) and Google's OSV-Scanner directly into the GitHub Actions CI pipeline, enforcing a strict zero-tolerance policy for vulnerable dependencies.
-
-## Execution, Setup, and CI/CD
-
-### Local Development Environment
-```bash
-# Install dependencies across all monorepo workspaces
-npm install
-# Generate Prisma Client and Database Types
-npm run db:generate
-# Start Turbo development server (Front & Back)
-npm run dev
-```
-
-### Production Deployment (Docker Compose)
-A multi-stage `docker-compose.yml` provides a production-accurate local cluster.
-```bash
-docker compose up -d --build
-```
+## Deployment Topology
+- **Multi-Stage Docker**: Images are built using Alpine Linux. The builder stage resolves dependencies (
+pm ci --ignore-scripts), compiles TypeScript, and generates the Prisma client. The final runner stage copies only /dist, drops development dependencies (--omit=dev), and runs the node process as an unprivileged user (USER node).
+- **Kubernetes**: Deployments enforce strict CPU (1000m) and Memory (1Gi) limits. PostgreSQL uses Hash Partitioning on event_id to prevent lock contention on B-Tree indexes.

@@ -5,14 +5,15 @@ import websocket from '@fastify/websocket';
 import rateLimit from '@fastify/rate-limit';
 import metrics from 'fastify-metrics';
 import { config } from './config';
+import redis from './redis';
 import { ReservationController } from './controllers/reservation.controller';
 import { SecurityController } from './controllers/security.controller';
 import { HealthController } from './controllers/health.controller';
 import { WebhookController } from './controllers/webhook.controller';
 
 /**
- * production API Entrypoint.
- * Architecture: Controller/Service Pattern with High-Availability Redis Locking.
+ * API Entrypoint.
+ * Architecture: Controller/Service Pattern with Redis Locking.
  */
 const server = Fastify({ 
   logger: {
@@ -26,17 +27,19 @@ server.register(websocket);
 // Prometheus Instrumentation: Metrics exposure at /metrics
 server.register(metrics, { endpoint: '/metrics' });
 
-// Security Shield Configuration
+// Rate Limiting Configuration
 let defenseActive = false;
 server.register(rateLimit, {
   max: 100,
   timeWindow: '1 minute',
-  skip: () => !defenseActive
-} as any);
+  skip: () => !defenseActive,
+  redis: redis,
+  keyGenerator: (req) => req.ip
+});
 
 /**
- * Stripe Webhook Raw Body Handling.
- * Necessary for cryptographic signature validation.
+ * Stripe Webhook Raw Body Parser.
+ * Required for signature validation.
  */
 server.addContentTypeParser('application/json', { parseAs: 'buffer' }, (req, body, done) => {
   if (req.url === '/webhook') {
@@ -45,7 +48,7 @@ server.addContentTypeParser('application/json', { parseAs: 'buffer' }, (req, bod
     try {
       const json = JSON.parse(body.toString());
       done(null, json);
-    } catch (err: any) {
+    } catch (err: unknown) {
       err.statusCode = 400;
       done(err, undefined);
     }
@@ -53,7 +56,7 @@ server.addContentTypeParser('application/json', { parseAs: 'buffer' }, (req, bod
 });
 
 /**
- * Route Registration - Production Grade Orchestration.
+ * Route Registration.
  */
 server.register(async (app) => {
   const reservationController = new ReservationController(app);
@@ -68,29 +71,29 @@ server.register(async (app) => {
   app.get('/health', (req, rep) => healthController.getHealth(req, rep));
   app.post('/webhook', (req, rep) => webhookController.handleStripeWebhook(req, rep));
 
-  // Full-Duplex Real-time Security Hub
-  app.get('/ws', { websocket: true }, (connection: any) => {
+  // Real-time WebSocket endpoint
+  app.get('/ws', { websocket: true }, (connection: import('@fastify/websocket').SocketStream) => {
     securityController.handleConnection(connection);
   });
 });
 
 /**
- * Fatal Error Protection Layer.
+ * Global Error Handler.
  */
-server.setErrorHandler((error: any, request, reply) => {
+server.setErrorHandler((error: import('fastify').FastifyError, request, reply) => {
   server.log.error(error);
   reply.status(500).send({ status: 'error', code: 'INTERNAL_SERVER_FAULT' });
 });
 
 /**
- * Server Lifecycle Management.
+ * Server Initialization.
  */
 const start = async () => {
   try {
     await server.listen({ port: config.PORT, host: '0.0.0.0' });
-    console.log(`[DEPLOYED] MegaTicketing API v1.0.0 listening on ${config.PORT}`);
+    console.log(`MegaTicketing API v1.0.0 listening on ${config.PORT}`);
   } catch (err) {
-    server.log.fatal(err as any);
+    server.log.fatal(err as Error);
     process.exit(1);
   }
 };

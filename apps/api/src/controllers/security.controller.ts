@@ -10,10 +10,10 @@ export class SecurityController {
 
   /**
    * Handles incoming WebSocket connections for security monitoring and state sync.
-   * Using any for connection to bypass Fastify version-specific type mismatches.
+   * Using SocketStream for connection.
    */
-  handleConnection(connection: any) {
-    let subscriber: any = null;
+  handleConnection(connection: import('@fastify/websocket').SocketStream) {
+    let subscriber: import('ioredis').Redis | null = null;
     let isClosed = false;
 
     connection.socket.on('message', async (message: Buffer) => {
@@ -76,7 +76,7 @@ export class SecurityController {
                     }
                   }
                 }
-              } catch (err: any) {
+              } catch (err: unknown) {
                 if (err.message?.includes('Connection is closed')) {
                   break;
                 }

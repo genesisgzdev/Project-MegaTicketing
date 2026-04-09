@@ -1,7 +1,7 @@
 ﻿import redis from '../redis';
 
 /**
- * FraudService: Advanced security module for detecting suspicious reservation patterns.
+ * FraudService: Module for detecting suspicious reservation patterns.
  * Uses Redis for high-performance temporal counters and rate limiting.
  */
 export class FraudService {
