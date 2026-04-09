@@ -1,30 +1,24 @@
-# Stage 1: Builder
+# Stage 1: Build logic
 FROM node:20-alpine AS builder
 WORKDIR /usr/src/app
 RUN apk add --no-cache libc6-compat
-
-# En un monorepo, debemos copiar TODO para que npm detecte los workspaces
 COPY . .
 RUN npm install --ignore-scripts
-
-# Compilar solo la API
 RUN npx prisma generate --schema=packages/database/prisma/schema.prisma || true
 RUN npx turbo run build --filter=@mega-ticketing/api
 
-# Stage 2: Runner
+# Stage 2: Hardened Runner
 FROM node:20-alpine AS runner
 WORKDIR /usr/src/app
 ENV NODE_ENV=production
 
-# Copiar el monorepo compilado
-COPY --from=builder --chown=node:node /usr/src/app ./
-
-# Limpiar dependencias de desarrollo para reducir la superficie de ataque
+# [SECURITY FIX] Selective copying to prevent source code or .env leaks
+COPY --from=builder /usr/src/app/package*.json ./
+COPY --from=builder /usr/src/app/apps/api/package.json ./apps/api/
+COPY --from=builder /usr/src/app/apps/api/dist ./apps/api/dist
+# Only install production dependencies for the workspace
 RUN npm install --omit=dev --ignore-scripts && npm cache clean --force
 
 USER node
 EXPOSE 3001
-
-# Ejecutar el binario desde la ruta correcta del workspace
 CMD ["node", "apps/api/dist/index.js"]
-
