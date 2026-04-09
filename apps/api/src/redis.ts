@@ -2,12 +2,15 @@ import Redis from 'ioredis';
 import crypto from 'crypto';
 import { config } from './config';
 
+/**
+ * Enterprise Redlock implementation for high-concurrency ticket reservations.
+ * Ensures distributed mutual exclusion with cryptographic nonces and strict TTLs.
+ */
 class RedlockProcessor {
   private redis: Redis;
   constructor(client: Redis) { this.redis = client; }
 
   async lock(resource: string, ttl: number): Promise<string | null> {
-    // [SECURITY FIX] Use cryptographically secure random bytes for nonces
     const nonce = crypto.randomBytes(16).toString('hex');
     const result = await this.redis.set(`lock:${resource}`, nonce, 'PX', ttl, 'NX');
     return result === 'OK' ? nonce : null;
@@ -22,8 +25,11 @@ class RedlockProcessor {
 
 const redis = new Redis({
   host: config.REDIS_HOST, port: config.REDIS_PORT, password: config.REDIS_PASSWORD,
-  retryStrategy: (times) => Math.min(times * 50, 2000)
+  retryStrategy: (times) => Math.min(times * 50, 2000),
+  maxRetriesPerRequest: null, enableOfflineQueue: false
 });
+
+redis.on('error', (err) => console.error('CRITICAL: Redis Connection Lost', err));
 
 const redlock = new RedlockProcessor(redis);
 
@@ -35,4 +41,5 @@ export const releaseSeat = async (eventId: string, seatId: string, lockToken: st
   return await redlock.unlock(`${eventId}:${seatId}`, lockToken);
 };
 
+export { RedisCircuitBreaker } from './services/circuit-breaker';
 export default redis;
