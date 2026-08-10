@@ -12,10 +12,21 @@
     "rootDir": "../../",
     "baseUrl": ".",
     "paths": {
-      "@mega-ticketing/shared": ["../../packages/shared/src/index.ts"],
-      "@mega-ticketing/database": ["../../packages/database/src/index.ts"]
+      "@mega-ticketing/shared": [
+        "../../packages/shared/src/index.ts"
+      ],
+      "@mega-ticketing/database": [
+        "../../packages/database/src/index.ts"
+      ]
     }
   },
-  "include": ["src/**/*", "../../packages/shared/src/**/*", "../../packages/database/src/**/*"],
-  "exclude": ["node_modules"]
+  "include": [
+    "src/**/*",
+    "../../packages/shared/src/**/*",
+    "../../packages/database/src/**/*"
+  ],
+  "exclude": [
+    "node_modules",
+    "src/__tests__"
+  ]
 }

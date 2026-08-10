@@ -36,7 +36,7 @@ export class PubSubService {
   private async consumeLoop() {
     while (true) {
       try {
-        const result = await redis.xreadgroup('GROUP', this.groupName, this.consumerName, 'BLOCK', 5000, 'COUNT', 10, 'STREAMS', this.streamName, '>');
+        const result = await (redis.xreadgroup as any)('GROUP', this.groupName, this.consumerName, 'BLOCK', 5000, 'COUNT', 10, 'STREAMS', this.streamName, '>');
         if (result) {
           const messages = result[0][1];
           for (const message of messages) {
