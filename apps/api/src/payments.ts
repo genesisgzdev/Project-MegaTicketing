@@ -1,9 +1,9 @@
-﻿import Stripe from 'stripe';
+import Stripe from 'stripe';
 import { config } from './config';
 
 // Handle Stripe constructor in ESM environment using validated config
 const stripe = new Stripe(config.STRIPE_SECRET_KEY, {
-  apiVersion: '2024-11-20.acacia',
+  apiVersion: '2026-03-25.dahlia',
 });
 
 export const createPaymentIntent = async (amount: number, currency: string = 'usd', metadata: Record<string, string>) => {

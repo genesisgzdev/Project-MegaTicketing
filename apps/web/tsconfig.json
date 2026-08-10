@@ -1,8 +1,12 @@
-﻿{
+{
   "compilerOptions": {
     "target": "ESNext",
     "useDefineForClassFields": true,
-    "lib": ["DOM", "DOM.Iterable", "ESNext"],
+    "lib": [
+      "DOM",
+      "DOM.Iterable",
+      "ESNext"
+    ],
     "allowJs": false,
     "skipLibCheck": true,
     "esModuleInterop": true,
@@ -18,11 +22,22 @@
     "baseUrl": ".",
     "allowImportingTsExtensions": true,
     "paths": {
-      "@mega-ticketing/shared": ["../../packages/shared/src/index.ts"]
+      "@mega-ticketing/shared": [
+        "../../packages/shared/src/index.ts"
+      ]
     }
   },
-  "include": ["src"],
-  "references": [{ "path": "./tsconfig.node.json" }]
+  "include": [
+    "src"
+  ],
+  "references": [
+    {
+      "path": "./tsconfig.node.json"
+    }
+  ],
+  "exclude": [
+    "src/__tests__",
+    "vitest.setup.ts",
+    "vitest.config.ts"
+  ]
 }
-
-

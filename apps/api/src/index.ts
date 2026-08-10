@@ -29,13 +29,13 @@ server.register(metrics, { endpoint: '/metrics' });
 
 // Rate Limiting Configuration
 let defenseActive = false;
-server.register(rateLimit, {
+server.register(rateLimit as any, {
   max: 100,
   timeWindow: '1 minute',
   skip: () => !defenseActive,
   redis: redis,
-  keyGenerator: (req) => req.ip
-});
+  keyGenerator: (req: any) => req.ip
+} as any);
 
 /**
  * Stripe Webhook Raw Body Parser.
@@ -49,8 +49,9 @@ server.addContentTypeParser('application/json', { parseAs: 'buffer' }, (req, bod
       const json = JSON.parse(body.toString());
       done(null, json);
     } catch (err: unknown) {
-      err.statusCode = 400;
-      done(err, undefined);
+      const parseError = err as Error & { statusCode?: number };
+      parseError.statusCode = 400;
+      done(parseError, undefined);
     }
   }
 });
@@ -72,7 +73,7 @@ server.register(async (app) => {
   app.post('/webhook', (req, rep) => webhookController.handleStripeWebhook(req, rep));
 
   // Real-time WebSocket endpoint
-  app.get('/ws', { websocket: true }, (connection: import('@fastify/websocket').SocketStream) => {
+  app.get('/ws', { websocket: true }, (connection: { socket: import('ws').WebSocket }) => {
     securityController.handleConnection(connection);
   });
 });

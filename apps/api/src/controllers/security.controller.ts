@@ -12,7 +12,7 @@ export class SecurityController {
    * Handles incoming WebSocket connections for security monitoring and state sync.
    * Using SocketStream for connection.
    */
-  handleConnection(connection: import('@fastify/websocket').SocketStream) {
+  handleConnection(connection: { socket: import('ws').WebSocket }) {
     let subscriber: import('ioredis').Redis | null = null;
     let isClosed = false;
 
@@ -77,7 +77,7 @@ export class SecurityController {
                   }
                 }
               } catch (err: unknown) {
-                if (err.message?.includes('Connection is closed')) {
+                if ((err as Error).message?.includes('Connection is closed')) {
                   break;
                 }
                 this.app.log.error(err, 'Redis stream read error');
