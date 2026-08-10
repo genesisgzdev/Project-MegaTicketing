@@ -9,11 +9,9 @@ export interface RequestContext {
   metadata: Record<string, any>;
 }
 
-declare global {
-  namespace FastifyInstance {
-    interface FastifyRequest {
-      context: RequestContext;
-    }
+declare module 'fastify' {
+  interface FastifyRequest {
+    context: RequestContext;
   }
 }
 

@@ -10,3 +10,5 @@ infra/*.tfstate*
 apps/web/dist/
 apps/api/dist/
 .gemini/
+
+.turbo/

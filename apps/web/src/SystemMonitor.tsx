@@ -1,4 +1,4 @@
-﻿import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls, Stars, Float, Text, MeshDistortMaterial } from '@react-three/drei';
 import { Physics, useBox, useSphere } from '@react-three/cannon';
@@ -25,7 +25,7 @@ const FileNode = React.memo(({ position, name, isError }: { position: any, name:
         (Math.random() - 0.5) * 10
       ], [0, 0, 0]);
     }
-  }, [isError]);
+  }, [api, isError]);
 
   return (
     <mesh
@@ -50,10 +50,12 @@ const FileNode = React.memo(({ position, name, isError }: { position: any, name:
       </Text>
     </mesh>
   );
-}
+});
+
+FileNode.displayName = 'FileNode';
 
 const SecurityCore = React.memo(({ status }: { status: string }) => {
-  const [ref, api] = useSphere(() => ({ 
+  const [ref] = useSphere(() => ({ 
     type: 'Static', 
     args: [1], 
     position: [0, 0, 0] 
@@ -77,7 +79,9 @@ const SecurityCore = React.memo(({ status }: { status: string }) => {
       </Text>
     </mesh>
   );
-}
+});
+
+SecurityCore.displayName = 'SecurityCore';
 
 const Ground = React.memo(() => {
   const [ref] = useBox(() => ({ 
@@ -92,9 +96,9 @@ const Ground = React.memo(() => {
       <meshStandardMaterial color="#050505" transparent opacity={0.5} />
     </mesh>
   );
-}
-
 });
+
+Ground.displayName = 'Ground';
 
 export default function CyberArena() {
   const [sysStatus, setStatus] = useState('SECURE');

@@ -36,7 +36,7 @@ export class EnhancedRedisCircuitBreaker {
       return result;
     } catch (error) {
       this.onFailure();
-      if (fallback && this.state === 'OPEN') {
+      if (fallback && this.getState() === 'OPEN') {
         return fallback();
       }
       throw error;

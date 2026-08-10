@@ -1,5 +1,5 @@
-﻿import { useState, useEffect, useRef, useCallback } from 'react';
-import { Ticket, Users, Calendar, MapPin, Zap, Activity, Shield, ShieldAlert, ShieldCheck, Globe, Database, Server } from 'lucide-react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { Zap, Activity, Shield, ShieldAlert, ShieldCheck, Globe, Database, Server } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import CyberArena from './CyberArena';
@@ -9,7 +9,6 @@ function cn(...inputs: ClassValue[]) {
 }
 
 export default function App() {
-  const [selectedSeats, setSelectedSeats] = useState<string[]>([]);
   const [isConnected, setIsConnected] = useState(false);
   const [isAttacked, setIsAttacked] = useState(false);
   const [shieldActive, setShieldActive] = useState(false);
@@ -48,7 +47,7 @@ export default function App() {
     socketRef.current?.send(JSON.stringify({ 
       type: newStatus ? 'ACTIVATE_DEFENSE' : 'DEACTIVATE_DEFENSE' 
     }));
-  };
+  }, [shieldActive]);
 
   return (
     <div className="min-h-screen bg-slate-950 p-8 font-sans selection:bg-indigo-500/30">

@@ -4,7 +4,7 @@ import Stripe from 'stripe';
 import redis from '../redis';
 import { config } from '../config';
 
-const stripe = new Stripe(config.STRIPE_SECRET_KEY, { apiVersion: '2024-06-20' });
+const stripe = new Stripe(config.STRIPE_SECRET_KEY, { apiVersion: '2026-03-25.dahlia' });
 
 export class WebhookController {
   private service: ReservationService;
@@ -12,7 +12,7 @@ export class WebhookController {
 
   async handleStripeWebhook(request: FastifyRequest, reply: FastifyReply) {
     const sig = request.headers['stripe-signature'] as string;
-    let event: Stripe.Event;
+    let event: any;
 
     try {
       event = stripe.webhooks.constructEvent(request.body as Buffer, sig, process.env.STRIPE_WEBHOOK_SECRET || '');
@@ -33,7 +33,7 @@ export class WebhookController {
       if (isProcessed) return reply.status(200).send({ received: true });
 
       if (event.type === 'checkout.session.completed') {
-        const session = event.data.object as Stripe.Checkout.Session;
+        const session = event.data.object as any;
         const { eventId, seatId } = session.metadata || {};
         if (eventId && seatId) await this.service.confirmReservation(eventId, seatId, event.id);
       }
