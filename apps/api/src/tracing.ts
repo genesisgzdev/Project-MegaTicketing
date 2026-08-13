@@ -1,27 +1,28 @@
 ﻿import { NodeSDK } from '@opentelemetry/sdk-node';
+import { FastifyOtelInstrumentation } from '@fastify/otel';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-grpc';
 import { HttpInstrumentation } from '@opentelemetry/instrumentation-http';
-import { FastifyInstrumentation } from '@opentelemetry/instrumentation-fastify';
 import { IORedisInstrumentation } from '@opentelemetry/instrumentation-ioredis';
 import { PrismaInstrumentation } from '@prisma/instrumentation';
-import { Resource } from '@opentelemetry/resources';
+import { resourceFromAttributes } from '@opentelemetry/resources';
 import { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } from '@opentelemetry/semantic-conventions';
+import { config } from './config';
 
 /**
  * OpenTelemetry Distributed Tracing Configuration.
  * Configures NodeSDK with OTLP gRPC exporter for Jaeger/Honeycomb.
  */
 const sdk = new NodeSDK({
-  resource: new Resource({
+  resource: resourceFromAttributes({
     [ATTR_SERVICE_NAME]: 'mega-ticketing-api',
     [ATTR_SERVICE_VERSION]: '1.0.0',
   }),
   traceExporter: new OTLPTraceExporter({
-    url: 'http://localhost:4317', // Jaeger OTLP gRPC port
+    url: config.OTEL_EXPORTER_OTLP_ENDPOINT,
   }),
   instrumentations: [
     new HttpInstrumentation(),
-    new FastifyInstrumentation(),
+    new FastifyOtelInstrumentation({ registerOnInitialization: true }),
     new IORedisInstrumentation(),
     new PrismaInstrumentation(),
   ],
@@ -43,5 +44,3 @@ process.on('SIGTERM', () => {
 });
 
 export default sdk;
-
-

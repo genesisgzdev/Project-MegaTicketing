@@ -14,9 +14,9 @@ const configSchema = z.object({
   PUBSUB_ORDERS_TOPIC: z.string().default('orders-topic'),
   CORS_ORIGINS: z.string().default('http://localhost:5173'),
   WS_ADMIN_TOKEN: z.string().optional(),
+  OTEL_EXPORTER_OTLP_ENDPOINT: z.string().url().default('http://localhost:4317'),
 });
 
 export const config = configSchema.parse(process.env);
 
 export type Config = z.infer<typeof configSchema>;
-

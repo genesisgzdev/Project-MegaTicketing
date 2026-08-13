@@ -9,20 +9,17 @@
   },
   "dependencies": {
     "@fastify/cors": "^9.0.1",
+    "@fastify/otel": "^0.20.1",
     "@fastify/rate-limit": "^10.3.0",
     "@fastify/websocket": "^11.2.0",
-    "@google-cloud/pubsub": "^5.3.0",
-    "@opentelemetry/api": "^1.9.0",
-    "@opentelemetry/auto-instrumentations-node": "^0.56.1",
-    "@opentelemetry/exporter-trace-otlp-grpc": "^0.57.2",
-    "@opentelemetry/instrumentation-fastify": "^0.44.2",
-    "@opentelemetry/instrumentation-http": "^0.57.2",
-    "@opentelemetry/instrumentation-ioredis": "^0.47.1",
-    "@opentelemetry/resources": "^1.30.1",
-    "@opentelemetry/sdk-node": "^0.57.2",
-    "@opentelemetry/semantic-conventions": "^1.28.0",
-    "@prisma/instrumentation": "^7.6.0",
-    "autocannon": "^8.0.0",
+    "@opentelemetry/api": "^1.9.1",
+    "@opentelemetry/exporter-trace-otlp-grpc": "^0.221.0",
+    "@opentelemetry/instrumentation-http": "^0.221.0",
+    "@opentelemetry/instrumentation-ioredis": "^0.69.0",
+    "@opentelemetry/resources": "^2.10.0",
+    "@opentelemetry/sdk-node": "^0.221.0",
+    "@opentelemetry/semantic-conventions": "^1.43.0",
+    "@prisma/instrumentation": "^7.9.1",
     "fastify": "^5.8.4",
     "fastify-metrics": "^13.2.0",
     "ioredis": "^5.10.1",
@@ -33,7 +30,7 @@
   "devDependencies": {
     "@types/node": "^20.0.0",
     "ioredis-mock": "^8.13.1",
-    "tsx": "^4.7.0",
+    "tsx": "^4.23.12",
     "typescript": "^5.0.0"
   }
 }

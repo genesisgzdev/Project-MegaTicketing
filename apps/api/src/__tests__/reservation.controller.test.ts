@@ -5,25 +5,25 @@ import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 // Mock dependencies
 vi.mock('../services/reservation.service', () => {
   return {
-    ReservationService: vi.fn().mockImplementation(() => ({
-      reserveSeat: vi.fn()
-    }))
+    ReservationService: class {
+      reserveSeat = vi.fn();
+    }
   };
 });
 
 vi.mock('../services/pubsub.service', () => {
   return {
-    PubSubService: vi.fn().mockImplementation(() => ({
-      publishOrderReserved: vi.fn().mockResolvedValue(undefined)
-    }))
+    PubSubService: class {
+      publishOrderReserved = vi.fn().mockResolvedValue(undefined);
+    }
   };
 });
 
 vi.mock('../services/fraud.service', () => {
   return {
-    FraudService: vi.fn().mockImplementation(() => ({
-      detectFraud: vi.fn()
-    }))
+    FraudService: class {
+      detectFraud = vi.fn();
+    }
   };
 });
 
