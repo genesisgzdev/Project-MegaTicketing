@@ -13,6 +13,8 @@ import { setupHealthCheck } from './health-check';
 import { db } from './db';
 import { setupRequestContext } from './request-context';
 import { setupErrorHandler } from './error-handler';
+import { SeatmapController } from './controllers/seatmap.controller';
+import { PaymentController } from './controllers/payment.controller';
 
 /**
  * API Entrypoint.
@@ -38,7 +40,7 @@ let defenseActive = false;
 server.register(rateLimit as any, {
   max: 100,
   timeWindow: '1 minute',
-  skip: () => !defenseActive,
+  skip: () => config.NODE_ENV !== 'production' && !defenseActive,
   redis: redis,
   keyGenerator: (req: any) => req.ip
 } as any);
@@ -71,9 +73,13 @@ server.register(async (app) => {
   const securityController = new SecurityController(app, (status: boolean) => {
     defenseActive = status;
   });
+  const seatmapController = new SeatmapController();
+  const paymentController = new PaymentController();
 
   // REST Interface
   app.post('/reserve', (req, rep) => reservationController.handleReservation(req, rep));
+  app.get('/events/:eventId/seats', (req, rep) => seatmapController.listSeats(req, rep));
+  app.post('/payments/intents', (req, rep) => paymentController.createIntent(req, rep));
   app.post('/webhook', (req, rep) => webhookController.handleStripeWebhook(req, rep));
 
   // Real-time WebSocket endpoint

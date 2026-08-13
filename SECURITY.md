@@ -1,22 +1,27 @@
-# Security Policy and Threat Model
+# Seguridad y modelo de amenazas
 
-## Threat Model
-MegaTicketing is designed to handle high-concurrency environments and is resistant to automated abuse, state corruption, and denial-of-service (DDoS).
+## Garantías actuales
 
-### Flash Sale DDoS & Bot Mitigation
-- **Edge Layer**: Cloudflare Workers intercept requests at the edge. The seatmap-cache.js worker aggressively caches read-heavy endpoints, absorbing traffic spikes before they hit the origin.
-- **WAF**: cloudflare_filter and cloudflare_firewall_rule enforce managed challenges for IP addresses exhibiting bot-like behavior or invalid HTTP verbs.
-- **Application Layer**: Fastify's native rate limiter acts as a secondary defense mechanism.
+- Una reserva solo se confirma si PostgreSQL actualiza exactamente una fila `Seat` y existe un único `Ticket` por asiento.
+- Redis usa nonces aleatorios y Lua para liberar únicamente el lock que lo creó.
+- El pago se confirma desde un webhook Stripe firmado, no desde el navegador.
+- Los eventos Stripe se procesan con una marca idempotente; si el procesamiento falla, el lock de procesamiento se elimina para que Stripe pueda reintentar.
+- En producción `/reserve` y `/payments/intents` requieren JWT cuyo `sub` coincide con `userId`.
+- Los clientes WebSocket no pueden activar la defensa; el header `x-admin-token` solo habilita esa acción cuando coincide con `WS_ADMIN_TOKEN`.
+- Los secretos de Compose no tienen valores de producción implícitos.
 
-### Transactional Integrity
-- **Distributed Locking**: Lua scripts in Redis prevent race conditions.
-- **Database Partitioning**: PostgreSQL Hash Partitioning on the eservations table mitigates row-level lock contention during massive concurrent insertions.
-- **Webhook Idempotency**: Stripe webhook payloads are parsed as raw Buffer objects for cryptographic signature verification, preventing replay attacks and payload tampering.
+## Fuera de alcance
 
-### Container Security
-- **Least Privilege**: The production Dockerfile executes the API as the 
-ode user, denying root access to the containerized environment.
-- **Supply Chain**: The CI/CD pipeline enforces Snyk for Software Composition Analysis (SCA).
+No afirmamos que Redis de un nodo sea tolerante a cualquier pérdida de datos ni que una sola API soporte 40.000 conexiones sin dimensionar PostgreSQL, Redis, Stripe, red y límites del proveedor. La prueba `scripts/concurrency-check.mjs` verifica la propiedad de una venta única contra un entorno levantado, no una capacidad universal.
 
-## Vulnerability Reporting
-Reports concerning Redis lock bypassing, JWT token forging, Database isolation failures, or Webhook signature circumvention should be submitted via GitHub Issues.
+## Reglas de despliegue
+
+1. Nunca expongas PostgreSQL ni Redis a Internet.
+2. No cachees ni reintentes `POST /reserve`, `/payments/intents` o `/webhook` en Cloudflare/Nginx.
+3. Usa un JWT issuer real y rota `JWT_SECRET`, `WS_ADMIN_TOKEN`, claves Stripe y credenciales de base.
+4. Ejecuta `npm audit`, `npm run build` y `npm test` antes de publicar.
+5. Revisa el resultado de la prueba de concurrencia con IDs de una base de staging real.
+
+## Reportes
+
+Reporta bypass de autenticación, doble emisión de tickets, aceptación de un webhook sin firma o escalada del control WebSocket de forma privada al mantenedor del repositorio. No publiques credenciales ni payloads con datos personales.

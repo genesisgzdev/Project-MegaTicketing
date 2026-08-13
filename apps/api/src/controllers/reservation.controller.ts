@@ -3,8 +3,7 @@ import { ReservationService } from '../services/reservation.service';
 import { PubSubService } from '../services/pubsub.service';
 import { FraudService } from '../services/fraud.service';
 import { z } from 'zod';
-import { jwtVerify } from 'jose';
-import { config } from '../config';
+import { authenticateUser } from '../auth';
 
 const ReserveSchema = z.object({
   seatId: z.string().uuid(),
@@ -35,20 +34,8 @@ export class ReservationController {
     try {
       const body = ReserveSchema.parse(request.body);
 
-      if (config.NODE_ENV === 'production') {
-        const authorization = request.headers.authorization;
-        if (!authorization?.startsWith('Bearer ')) {
-          return reply.status(401).send({ status: 'error', message: 'Authentication required' });
-        }
-        try {
-          const token = authorization.slice('Bearer '.length);
-          const { payload } = await jwtVerify(token, new TextEncoder().encode(config.JWT_SECRET));
-          if (payload.sub !== body.userId) {
-            return reply.status(403).send({ status: 'error', message: 'Authenticated user does not match reservation owner' });
-          }
-        } catch {
-          return reply.status(401).send({ status: 'error', message: 'Invalid authentication token' });
-        }
+      if (!(await authenticateUser(request, body.userId))) {
+        return reply.status(401).send({ status: 'error', message: 'Authentication required' });
       }
       
       // 1. Fraud Detection (Velocity & Pattern Matching)

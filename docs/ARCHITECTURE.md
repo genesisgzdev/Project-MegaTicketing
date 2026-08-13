@@ -1,33 +1,33 @@
-﻿# MegaTicketing Architecture
+# Arquitectura operativa
 
-## System Overview
-A high-performance, real-time ticketing system designed to handle massive spikes in traffic (e.g., concert on-sales).
+## Fuentes de verdad
 
-## Tech Stack
-- **Monorepo Manager:** Turborepo / npm workspaces
-- **API (apps/api):** Fastify + TypeScript
-- **Frontend (apps/web):** React + Vite + TailwindCSS
-- **Primary Database:** PostgreSQL (Prisma ORM)
-- **Cache & Real-time Locking:** Redis
-- **Schema Validation:** Zod
+| Dato | Autoridad | Caché/evento |
+|---|---|---|
+| Evento y precio | PostgreSQL | Redis/Cloudflare solo para lecturas explícitas |
+| Lock temporal | Redis nonce NX/PX | `Seat.lockedAt` permite reconciliación |
+| Ticket vendido | PostgreSQL `Ticket.status=PAID` | Redis refleja estado para realtime |
+| Pago | Stripe + webhook firmado | marcador Redis de idempotencia |
 
-## Core Services & Logic
-1.  **Distributed Seat Locking:**
-    - When a user selects a seat, a TTL (Time-To-Live) lock is placed in Redis.
-    - If the purchase is not completed within 10 minutes, the lock expires automatically.
-2.  **Concurrency Handling:**
-    - Use PostgreSQL transactions for ticket issuance to prevent double-selling.
-    - Optimistic UI updates on the frontend for low latency.
+## Carrera de 40.000 compradores
 
-## Security Layer
-- **Auth:** JWT with Refresh Tokens stored in HTTP-only cookies.
-- **Audit:** All transactions logged with checksums in `packages/database`.
-- **Scanning:** Continuous CI/CD security scanning via Snyk and OSV-Scanner.
+La unicidad no depende de que una instancia de Node sea la primera. Todas las réplicas pueden recibir la petición. El nonce Redis reduce trabajo duplicado; la condición PostgreSQL `isLocked=false` es el árbitro final. Bajo READ COMMITTED, solo una transacción puede afectar esa fila; la restricción `Ticket.seatId UNIQUE` añade una segunda barrera.
 
-## Directory Structure
-- `apps/api`: REST/GraphQL endpoints.
-- `apps/web`: Admin and Customer portals.
-- `packages/shared`: Common TypeScript types and validation schemas (Zod).
-- `packages/database`: Prisma models and migrations.
+Una caída entre Redis y PostgreSQL puede dejar un lock temporal sin ticket, pero el lock expira y la siguiente reserva reconcilia `Seat.lockedAt`. Una caída después de crear el ticket no puede generar otro ticket para ese asiento.
 
+## Ciclo de vida
 
+```text
+available -> Redis lock -> PostgreSQL seat locked + Ticket LOCKED
+LOCKED + payment_intent.succeeded -> Ticket PAID
+LOCKED + timeout -> Ticket CANCELLED y Seat disponible
+PAID -> inmutable frente a nuevas reservas
+```
+
+El TTL actual es 30 segundos y debe ser igual en Redis, reconciliación SQL, mapa y payment intent. Cambiarlo exige cambiar los cuatro puntos y la prueba de carga.
+
+## Escala y límites
+
+Redis de un nodo no es un Redlock multi-master; es un acelerador y protección de ráfaga. Para producción multi-región, usar Redis gestionado con failover y mantener PostgreSQL con una única autoridad transaccional por evento. Cloudflare puede absorber mapa/cache, pero nunca cachear `POST /reserve`, `/payments/intents` o `/webhook`.
+
+La prueba incluida mide el sistema completo y falla si acepta más de una petición. No prueba capacidad infinita: la capacidad real depende de PostgreSQL, Redis, límites de Stripe, red y configuración del despliegue.

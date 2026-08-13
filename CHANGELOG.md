@@ -25,3 +25,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 - Automated SAST/SCA scanning in CI/CD pipelines.
 - Enhanced CORS policies and granular rate limiting per service.
+# Unreleased — 2026-08-13
+
+- Reemplazado el mapa de asientos inventado por inventario y precios leídos desde PostgreSQL.
+- Añadidos `GET /events/:eventId/seats` y `POST /payments/intents`.
+- Añadida prueba de carrera real para 40.000 peticiones contra un mismo asiento.
+- Corregidos retries Stripe: un fallo de procesamiento ya no bloquea indefinidamente el retry legítimo.
+- Documentadas fuentes de verdad, límites de escala y garantías verificables.

@@ -37,18 +37,21 @@ export class WebhookController {
       const isProcessed = await this.service.isEventProcessed(event.id);
       if (isProcessed) return reply.status(200).send({ received: true });
 
-      if (event.type === 'checkout.session.completed') {
-        const session = event.data.object as any;
-        const { eventId, seatId } = session.metadata || {};
+      if (event.type === 'checkout.session.completed' || event.type === 'payment_intent.succeeded') {
+        const payment = event.data.object as any;
+        const { eventId, seatId } = payment.metadata || {};
         if (!eventId || !seatId) {
           this.app.log.warn({ eventId: event.id }, 'Stripe event missing reservation metadata');
           return reply.status(400).send({ status: 'error', message: 'Payment metadata is incomplete' });
         }
         await this.service.confirmReservation(eventId, seatId, event.id);
       }
+    } catch (error) {
+      await redis.del(idempotencyKey);
+      throw error;
     } finally {
-      // Keep the lock for a bit longer than the process to ensure full propagation
-      await redis.expire(idempotencyKey, 60); 
+      // Processed events are retained by the durable idempotency marker.
+      // Failed events must be retryable by Stripe.
     }
 
     return reply.status(200).send({ received: true });

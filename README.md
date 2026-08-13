@@ -1,63 +1,82 @@
-# MegaTicketing Platform
+# MegaTicketing
 
-## System Architecture
+MegaTicketing es una plataforma de venta de entradas orientada a picos de demanda. Su regla de negocio no es una promesa de marketing: para un asiento concreto, una sola petición puede crear la reserva persistida; las demás reciben conflicto. La garantía se sostiene en PostgreSQL y se acelera con Redis.
 
-MegaTicketing is a high-availability, distributed ticketing platform engineered for flash-sale concurrency. The microservices architecture guarantees transactional atomic consistency and zero-overselling through Redis Lua locking, event-driven state reconciliation, and multi-layered perimeter defense.
+## Estado real
 
-```mermaid
-sequenceDiagram
-    participant Client
-    participant CF as Cloudflare (Worker/WAF)
-    participant API as Fastify Controller
-    participant Redis as Redis Cluster
-    participant DB as PostgreSQL
+- API Fastify + TypeScript.
+- PostgreSQL/Prisma como autoridad de reservas y tickets.
+- Redis como lock distribuido de corta duración, rate limiting y eventos.
+- Stripe PaymentIntents con idempotencia por evento/asiento/usuario.
+- WebSocket para inventario y señales operativas; el control administrativo requiere token.
+- React/Vite consume el mapa de asientos desde `/events/:eventId/seats`; no inventa disponibilidad local.
+- Node 22 en las imágenes Docker.
 
-    Client->>CF: POST /reserve {eventId, seatId}
-    CF->>API: Rate Limit / WAF Passed
-    API->>API: Zod Payload Validation
-    API->>Redis: lockSeat() via Circuit Breaker
-    alt Lock Acquired (NX PX 30000)
-        Redis-->>API: OK
-        API->>Redis: XADD stream:event:id (State Delta)
-        API->>DB: INSERT INTO reservations
-        DB-->>API: 201 Created
-        API-->>Client: Success
-    else Lock Failed / Circuit Open
-        Redis-->>API: NAK
-        API-->>Client: 409 Conflict
-    end
+## La invariante de venta única
+
+La ruta `POST /reserve` sigue este orden:
+
+1. Valida UUIDs y, en producción, verifica que el JWT sea del `userId` solicitado.
+2. Obtiene un nonce con `SET NX PX` en Redis.
+3. En una transacción PostgreSQL libera un lock persistido expirado, ejecuta `UPDATE seat ... WHERE isLocked=false`, y solo si afecta una fila crea/actualiza el ticket `LOCKED`.
+4. Si la transacción falla libera el nonce Redis.
+5. El webhook Stripe cambia el ticket a `PAID` de forma condicional; el evento queda idempotentemente registrado.
+
+Redis nunca es la autoridad final. Si Redis se reinicia, PostgreSQL sigue impidiendo el doble ticket; si PostgreSQL rechaza la operación, el lock Redis se libera.
+
+## Desarrollo local
+
+Requisitos: Node 22+, npm 10+ y Docker.
+
+```bash
+cp .env.example .env
+# Completa STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET y JWT_SECRET.
+npm ci
+npm run build
+npm test
 ```
 
-## Concurrency Control & State Management
+Para levantar las dependencias:
 
-### 1. Redis Circuit Breaker & Exponential Backoff
-The backend implements a custom `RedisCircuitBreaker` in TypeScript to prevent cascading failures if the cache cluster degrades.
-- **State Machine**: Transitions dynamically between `CLOSED`, `OPEN`, and `HALF_OPEN`.
-- **Threshold**: Trips to `OPEN` after a predefined number of consecutive connection or timeout failures (e.g., 3).
-- **Backoff Algorithm**: Retries implement an exponential backoff timing model (`baseDelay * Math.pow(2, attempt - 1)`).
-- **Graceful Degradation**: If Redis is unreachable, the system executes a fallback closure, relying exclusively on PostgreSQL optimistic concurrency control to process the transaction.
+```bash
+docker compose up -d db redis
+npx prisma db push --schema packages/database/prisma/schema.prisma
+```
 
-### 2. Distributed Atomic Locking (Lua)
-Preventing Time-Of-Check to Time-Of-Use (TOCTOU) race conditions during seat reservations is handled entirely within the Redis engine.
-- A lock is assigned a UUID token tied to the user session (`SET key value NX PX 30000`).
-- **`releaseLockAtomic`**: A registered Lua script ensures that a `DEL` operation only executes if a preceding `GET` matches the user's token. This guarantees that a slow client cannot accidentally release a lock that has expired and been re-acquired by another user.
+La API requiere secretos reales en Compose; no hay claves placeholder silenciosas en producción.
 
-### 3. Real-time State Reconciliation (Redis Streams)
-To synchronize the frontend UI (the 400-node Seat Map Grid) without aggressive polling, the system uses a reactive topology.
-- **`XREAD BLOCK`**: Services publish state-change events (e.g., `status: 'RESERVED'`) to Redis Streams (`XADD`). Dedicated routines consume these streams using `XREAD BLOCK`, ensuring ordered, at-least-once delivery with minimal CPU overhead.
-- **WebSockets**: Upon consuming a stream event, the Fastify WebSocket gateway broadcasts the delta to connected clients.
+## Contratos principales
 
-## Application Layer
+`POST /reserve`
 
-### Fastify & Zod
-- **Controller/Service Pattern**: Controllers act purely as the transport layer (HTTP parsing, routing, response formatting). Services encapsulate all protocol-agnostic business logic.
-- **Strict Validation**: All inbound payloads, including webhook signatures, are strictly validated against Zod schemas. Deviations return a 400 Bad Request.
-- **Rate Limiting**: `@fastify/rate-limit` enforces a strict 100 requests/minute limit per IP, actively defending against brute-force enumeration.
+```json
+{"eventId":"uuid","seatId":"uuid","userId":"uuid"}
+```
 
-### React Component Memoization
-The frontend heavily utilizes `React.memo`, `useMemo`, and `useCallback`.
-- Complex hierarchies like the `SystemMonitor.tsx` (Three.js/Cannon.js physics engine) and `CyberArena.tsx` prevent unnecessary re-renders when the WebSocket pushes high-frequency state updates.
+Devuelve `201` una vez, `409` si el asiento está ocupado y `401` cuando producción no recibe un JWT válido.
 
-## Deployment Topology
-- **Multi-Stage Docker**: Images are built using Alpine Linux. The builder stage resolves dependencies (`npm ci --ignore-scripts`), compiles TypeScript, and generates the Prisma client. The final runner stage copies only `/dist`, drops development dependencies (`--omit=dev`), and runs the node process as an unprivileged user (`USER node`).
-- **Kubernetes**: Deployments enforce strict CPU (`1000m`) and Memory (`1Gi`) limits. PostgreSQL uses Hash Partitioning on `event_id` to prevent lock contention on B-Tree indexes.
+`GET /events/:eventId/seats` devuelve el evento, precio y estado real (`available`, `held`, `sold`). El frontend refresca ese inventario y no usa asientos hardcodeados.
+
+`POST /payments/intents` solo acepta una reserva `LOCKED` vigente del usuario y devuelve el `clientSecret` de Stripe.
+
+`POST /webhook` verifica la firma raw de Stripe y acepta `payment_intent.succeeded` y `checkout.session.completed`. Los fallos liberan el marcador de procesamiento para permitir el retry legítimo de Stripe.
+
+## Prueba de concurrencia
+
+Con un evento, asiento y usuario existentes en la base:
+
+```bash
+npm run load:test -- http://localhost:3001 EVENT_UUID SEAT_UUID USER_UUID 40000 1000
+```
+
+El resultado debe reportar exactamente un `201`, el resto `409`, y `invariant.exactlyOneAccepted: true`. Esta prueba golpea la API real; no mockea Redis, PostgreSQL ni el controlador.
+
+## Operación
+
+- `/health` verifica PostgreSQL, Redis y memoria.
+- `/health/ready` bloquea readiness si PostgreSQL o Redis no responden.
+- `/metrics` expone métricas Prometheus.
+- `CORS_ORIGINS`, `OTEL_EXPORTER_OTLP_ENDPOINT`, `WS_ADMIN_TOKEN` y `VITE_API_URL` son configuración explícita.
+- `npm audit` debe permanecer en cero antes de publicar.
+
+Para el detalle de invariantes, amenazas, límites y fallos aceptables, consultar [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) y [SECURITY.md](SECURITY.md).
