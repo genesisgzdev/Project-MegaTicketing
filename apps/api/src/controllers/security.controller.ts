@@ -12,7 +12,7 @@ export class SecurityController {
    * Handles incoming WebSocket connections for security monitoring and state sync.
    * Using SocketStream for connection.
    */
-  handleConnection(connection: { socket: import('ws').WebSocket }) {
+  handleConnection(connection: { socket: import('ws').WebSocket }, canControlDefense = false) {
     let subscriber: import('ioredis').Redis | null = null;
     let isClosed = false;
 
@@ -21,11 +21,13 @@ export class SecurityController {
         const data = JSON.parse(message.toString());
         
         if (data.type === 'ACTIVATE_DEFENSE') {
+          if (!canControlDefense) return;
           this.onDefenseToggle(true);
           this.app.log.info('Security shield engaged');
         }
         
         if (data.type === 'DEACTIVATE_DEFENSE') {
+          if (!canControlDefense) return;
           this.onDefenseToggle(false);
           this.app.log.info('Security shield disengaged');
         }

@@ -14,7 +14,7 @@ export function setupIdempotency(app: FastifyInstance, redis: Redis) {
   app.addHook('onRequest', async (request, reply) => {
     const idempotencyKey = request.headers['idempotency-key'] as string;
 
-    if (!idempotencyKey) {
+    if (!idempotencyKey || request.method === 'GET') {
       return;
     }
 
@@ -25,8 +25,7 @@ export function setupIdempotency(app: FastifyInstance, redis: Redis) {
     const cached = await redis.get(key);
     if (cached) {
       const { statusCode, body } = JSON.parse(cached);
-      reply.status(statusCode).send(body);
-      return;
+      return reply.status(statusCode).send(body);
     }
 
     request.context.metadata.idempotencyKey = idempotencyKey;

@@ -8,8 +8,11 @@ import { config } from './config';
 import redis from './redis';
 import { ReservationController } from './controllers/reservation.controller';
 import { SecurityController } from './controllers/security.controller';
-import { HealthController } from './controllers/health.controller';
 import { WebhookController } from './controllers/webhook.controller';
+import { setupHealthCheck } from './health-check';
+import { db } from './db';
+import { setupRequestContext } from './request-context';
+import { setupErrorHandler } from './error-handler';
 
 /**
  * API Entrypoint.
@@ -21,7 +24,10 @@ const server = Fastify({
   } 
 });
 
-server.register(cors);
+setupRequestContext(server);
+
+const allowedOrigins = config.CORS_ORIGINS.split(',').map((origin) => origin.trim()).filter(Boolean);
+server.register(cors, { origin: allowedOrigins });
 server.register(websocket);
 
 // Prometheus Instrumentation: Metrics exposure at /metrics
@@ -61,7 +67,6 @@ server.addContentTypeParser('application/json', { parseAs: 'buffer' }, (req, bod
  */
 server.register(async (app) => {
   const reservationController = new ReservationController(app);
-  const healthController = new HealthController();
   const webhookController = new WebhookController(app);
   const securityController = new SecurityController(app, (status: boolean) => {
     defenseActive = status;
@@ -69,22 +74,22 @@ server.register(async (app) => {
 
   // REST Interface
   app.post('/reserve', (req, rep) => reservationController.handleReservation(req, rep));
-  app.get('/health', (req, rep) => healthController.getHealth(req, rep));
   app.post('/webhook', (req, rep) => webhookController.handleStripeWebhook(req, rep));
 
   // Real-time WebSocket endpoint
-  app.get('/ws', { websocket: true }, (connection: { socket: import('ws').WebSocket }) => {
-    securityController.handleConnection(connection);
+  app.get('/ws', { websocket: true }, (connection: { socket: import('ws').WebSocket }, request) => {
+    const adminToken = request.headers['x-admin-token'];
+    const canControlDefense = Boolean(config.WS_ADMIN_TOKEN && adminToken === config.WS_ADMIN_TOKEN);
+    securityController.handleConnection(connection, canControlDefense);
   });
 });
+
+setupHealthCheck(server, db, redis);
 
 /**
  * Global Error Handler.
  */
-server.setErrorHandler((error: import('fastify').FastifyError, request, reply) => {
-  server.log.error(error);
-  reply.status(500).send({ status: 'error', code: 'INTERNAL_SERVER_FAULT' });
-});
+setupErrorHandler(server);
 
 /**
  * Server Initialization.
@@ -100,6 +105,3 @@ const start = async () => {
 };
 
 start();
-
-
-

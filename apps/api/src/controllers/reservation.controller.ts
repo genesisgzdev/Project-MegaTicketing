@@ -3,6 +3,8 @@ import { ReservationService } from '../services/reservation.service';
 import { PubSubService } from '../services/pubsub.service';
 import { FraudService } from '../services/fraud.service';
 import { z } from 'zod';
+import { jwtVerify } from 'jose';
+import { config } from '../config';
 
 const ReserveSchema = z.object({
   seatId: z.string().uuid(),
@@ -32,6 +34,22 @@ export class ReservationController {
   async handleReservation(request: FastifyRequest, reply: FastifyReply) {
     try {
       const body = ReserveSchema.parse(request.body);
+
+      if (config.NODE_ENV === 'production') {
+        const authorization = request.headers.authorization;
+        if (!authorization?.startsWith('Bearer ')) {
+          return reply.status(401).send({ status: 'error', message: 'Authentication required' });
+        }
+        try {
+          const token = authorization.slice('Bearer '.length);
+          const { payload } = await jwtVerify(token, new TextEncoder().encode(config.JWT_SECRET));
+          if (payload.sub !== body.userId) {
+            return reply.status(403).send({ status: 'error', message: 'Authenticated user does not match reservation owner' });
+          }
+        } catch {
+          return reply.status(401).send({ status: 'error', message: 'Invalid authentication token' });
+        }
+      }
       
       // 1. Fraud Detection (Velocity & Pattern Matching)
       const isFraudulent = await this.fraudService.detectFraud(request.ip, body.eventId);
@@ -45,9 +63,9 @@ export class ReservationController {
       }
 
       // 2. Attempt to acquire distributed lock in Redis (production approach)
-      const success = await this.service.reserveSeat(body.eventId, body.seatId, body.userId);
+      const lockToken = await this.service.reserveSeat(body.eventId, body.seatId, body.userId);
       
-      if (success) {
+      if (lockToken) {
         this.app.log.info({ ...body }, 'Seat lock acquired successfully');
 
         // 3. Stream event to Pub/Sub for asynchronous order processing (fulfillment, payment, etc.)
@@ -64,7 +82,7 @@ export class ReservationController {
           data: { 
             reserved: true,
             eventId: body.eventId,
-            seatId: body.seatId
+            seatId: body.seatId,
           } 
         });
       }
@@ -84,5 +102,3 @@ export class ReservationController {
     }
   }
 }
-
-

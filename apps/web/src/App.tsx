@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { Zap, Activity, Shield, ShieldAlert, ShieldCheck, Globe, Database, Server } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Zap, Activity, Shield, ShieldAlert, Globe, Database, Server } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import CyberArena from './CyberArena';
@@ -9,19 +9,48 @@ function cn(...inputs: ClassValue[]) {
 }
 
 export default function App() {
+  const apiBase = import.meta.env.VITE_API_URL || 'http://localhost:3001';
   const [isConnected, setIsConnected] = useState(false);
   const [isAttacked, setIsAttacked] = useState(false);
-  const [shieldActive, setShieldActive] = useState(false);
   const [logs, setLogs] = useState<string[]>([]);
-  const [infraStatus, setInfraStatus] = useState({
-    region: 'us-east-1',
-    waf: 'Active',
-    k8s: '3/3 Nodes Ready'
-  });
+  const [health, setHealth] = useState<{
+    status: string;
+    checks: { database: { status: string; latency: number }; redis: { status: string; latency: number }; memory: { status: string; percentage: number } };
+  } | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    const refreshHealth = async () => {
+      try {
+        const response = await fetch(`${apiBase}/health`);
+        if (!response.ok) throw new Error(`Health request failed: ${response.status}`);
+        const payload = await response.json();
+        if (mounted) setHealth(payload);
+      } catch (error) {
+        if (mounted) setHealth(null);
+        setLogs((prev) => [`HEALTH: ${error instanceof Error ? error.message : 'unreachable'}`, ...prev].slice(0, 10));
+      }
+    };
+    refreshHealth();
+    const timer = window.setInterval(refreshHealth, 10000);
+    return () => { mounted = false; window.clearInterval(timer); };
+  }, [apiBase]);
+
+  const statusLabel = health?.status?.toUpperCase() || 'UNREACHABLE';
+  const statusClass = health?.status === 'healthy' ? 'text-emerald-400' : 'text-amber-400';
+  const apiLatency = health?.checks?.database?.latency ?? 0;
+  const memoryUsage = health?.checks?.memory?.percentage ?? 0;
+
+  const infraStatus = {
+    region: 'runtime',
+    waf: statusLabel,
+    k8s: isConnected ? 'WebSocket online' : 'WebSocket offline'
+  };
   const socketRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
-    const socket = new WebSocket('ws://localhost:3001/ws');
+    const socketUrl = apiBase.replace(/^http/, 'ws') + '/ws';
+    const socket = new WebSocket(socketUrl);
     socketRef.current = socket;
 
     socket.onopen = () => {
@@ -30,24 +59,17 @@ export default function App() {
     };
     socket.onclose = () => setIsConnected(false);
     socket.onmessage = (event) => {
-      const data = JSON.parse(event.data);
+      let data: { type?: string; status?: string; message?: string };
+      try { data = JSON.parse(event.data); } catch { return; }
       if (data.type === 'ATTACK_STATUS') {
         setIsAttacked(data.status === 'ATTACK');
       }
       if (data.type === 'LOG') {
-        setLogs(prev => [data.message, ...prev].slice(0, 10));
+        if (data.message) setLogs(prev => [data.message as string, ...prev].slice(0, 10));
       }
     };
     return () => socket.close();
-  }, []);
-
-  const toggleShield = useCallback(() => {
-    const newStatus = !shieldActive;
-    setShieldActive(newStatus);
-    socketRef.current?.send(JSON.stringify({ 
-      type: newStatus ? 'ACTIVATE_DEFENSE' : 'DEACTIVATE_DEFENSE' 
-    }));
-  }, [shieldActive]);
+  }, [apiBase]);
 
   return (
     <div className="min-h-screen bg-slate-950 p-8 font-sans selection:bg-indigo-500/30">
@@ -81,18 +103,10 @@ export default function App() {
             </div>
           </div>
           
-          <button 
-            onClick={toggleShield}
-            className={cn(
-              "flex items-center gap-3 px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-[0.2em] transition-all duration-500 shadow-2xl",
-              shieldActive 
-                ? "bg-emerald-500 text-slate-950 shadow-emerald-500/20 scale-105" 
-                : "bg-slate-900 text-slate-400 border border-white/5 hover:border-indigo-500/50 hover:text-indigo-400"
-            )}
-          >
-            {shieldActive ? <ShieldCheck /> : <Shield size={18} />}
-            {shieldActive ? 'WAF Shield Active' : 'Activate Global Defense'}
-          </button>
+          <div className="flex items-center gap-3 px-8 py-4 rounded-2xl bg-slate-900 text-slate-400 border border-white/5 font-black text-xs uppercase tracking-[0.2em]">
+            <Shield size={18} className={statusClass} />
+            Runtime: <span className={statusClass}>{statusLabel}</span>
+          </div>
         </div>
       </header>
 
@@ -113,26 +127,26 @@ export default function App() {
               <div className="space-y-2">
                 <div className="flex justify-between text-[10px] font-bold uppercase text-slate-500 tracking-wider">
                   <span>API Response</span>
-                  <span className="text-emerald-400">14ms</span>
+                  <span className={statusClass}>{apiLatency}ms</span>
                 </div>
                 <div className="w-full h-1 bg-slate-800 rounded-full overflow-hidden">
-                  <div className="w-[15%] h-full bg-emerald-500 shadow-[0_0_10px_#10b981]" />
+                  <div className="h-full bg-emerald-500 shadow-[0_0_10px_#10b981]" style={{ width: `${Math.min(apiLatency * 2, 100)}%` }} />
                 </div>
               </div>
               
               <div className="space-y-2">
                 <div className="flex justify-between text-[10px] font-bold uppercase text-slate-500 tracking-wider">
                   <span>Memory Usage</span>
-                  <span className="text-indigo-400">256MB</span>
+                  <span className="text-indigo-400">{memoryUsage}%</span>
                 </div>
                 <div className="w-full h-1 bg-slate-800 rounded-full overflow-hidden">
-                  <div className="w-[45%] h-full bg-indigo-500 shadow-[0_0_10px_#6366f1]" />
+                  <div className="h-full bg-indigo-500 shadow-[0_0_10px_#6366f1]" style={{ width: `${memoryUsage}%` }} />
                 </div>
               </div>
 
               <div className="pt-6 border-t border-white/5 font-mono text-[10px] text-slate-500 space-y-3">
-                <p className="flex items-center gap-2"><Database size={12} /> PG Transaction Log: OK</p>
-                <p className="flex items-center gap-2"><Zap size={12} className="text-amber-500" /> Redis Cluster: 1 Node</p>
+                <p className="flex items-center gap-2"><Database size={12} /> PG: {health?.checks?.database?.status || 'unknown'}</p>
+                <p className="flex items-center gap-2"><Zap size={12} className="text-amber-500" /> Redis: {health?.checks?.redis?.status || 'unknown'}</p>
               </div>
             </div>
           </div>
@@ -155,5 +169,3 @@ export default function App() {
     </div>
   );
 }
-
-

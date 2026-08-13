@@ -12,10 +12,11 @@ const configSchema = z.object({
   JWT_SECRET: z.string().min(32, 'JWT Secret must be at least 32 characters'),
   GCP_PROJECT_ID: z.string().optional(),
   PUBSUB_ORDERS_TOPIC: z.string().default('orders-topic'),
+  CORS_ORIGINS: z.string().default('http://localhost:5173'),
+  WS_ADMIN_TOKEN: z.string().optional(),
 });
 
 export const config = configSchema.parse(process.env);
 
 export type Config = z.infer<typeof configSchema>;
-
 

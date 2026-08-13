@@ -77,8 +77,10 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - DATABASE_URL=postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-development_password}@db:5432/${DB_NAME:-megaticketing}?schema=public
-      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-sk_test_placeholder}
-      - JWT_SECRET=${JWT_SECRET:-placeholder_at_least_32_chars}
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:?STRIPE_SECRET_KEY must be set}
+      - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET:?STRIPE_WEBHOOK_SECRET must be set}
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost}
     depends_on:
       db:
         condition: service_healthy
