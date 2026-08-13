@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { act, render, screen } from '@testing-library/react';
 import { useWebSocketReconnect } from '../../src/hooks/useWebSocketReconnect';
 import { ReactNode } from 'react';
 
@@ -31,13 +31,12 @@ describe('useWebSocketReconnect', () => {
     vi.useRealTimers();
   });
 
-  it('should attempt to connect on mount', async () => {
-    render(<TestComponent url="ws://localhost:3000" />);
-
-    await waitFor(() => {
-      // Component should render without errors
-      expect(screen.getByTestId('connection-status')).toBeInTheDocument();
+  it('should attempt to connect on mount', () => {
+    act(() => {
+      render(<TestComponent url="ws://localhost:3000" />);
     });
+
+    expect(screen.getByTestId('connection-status')).toBeInTheDocument();
   });
 
   it('should implement exponential backoff on reconnection', async () => {
