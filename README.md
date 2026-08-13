@@ -12,6 +12,36 @@ MegaTicketing es una plataforma de venta de entradas orientada a picos de demand
 - React/Vite consume el mapa de asientos desde `/events/:eventId/seats`; no inventa disponibilidad local.
 - Node 22 en las imágenes Docker.
 
+## Mapa del sistema
+
+```text
+apps/api/
+  controllers/       HTTP, pagos, reservas, seatmap, seguridad y Stripe webhook
+  services/          reserva transaccional, fraude, salud, Pub/Sub y seguridad
+  redis.ts            nonce NX/PX, liberación Lua, estado realtime e idempotencia
+  db.ts               frontera Prisma/PostgreSQL
+  health-check.ts     health/readiness con dependencias reales
+  metrics.ts          métricas Prometheus
+apps/web/
+  App.tsx             consola operativa, health y WebSocket
+  CyberArena.tsx      mapa conectado al inventario PostgreSQL
+packages/
+  database/prisma/    Event, Seat, Ticket y estados persistidos
+  shared/             contratos Zod compartidos
+infra/
+  Docker/Compose      runtime local y contenedores multi-stage
+  Kubernetes/HPA      despliegue y escalado de API
+  Terraform            GKE y Cloudflare/WAF
+  nginx/               gateway HTTP/WebSocket sin cachear mutaciones
+scripts/
+  concurrency-check   prueba contra Redis + PostgreSQL reales, no mocks
+.github/workflows/
+  security            audit, build y tests en PR/push
+  release              release manual versionada
+```
+
+La ruta crítica es `POST /reserve` → nonce Redis → `UPDATE Seat ... WHERE isLocked=false` en PostgreSQL → único `Ticket` → Stripe webhook firmado → `PAID`. La interfaz, el gateway y las capas de infraestructura consumen ese estado; ninguna decide por sí sola que un asiento está vendido.
+
 ## La invariante de venta única
 
 La ruta `POST /reserve` sigue este orden:

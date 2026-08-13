@@ -103,7 +103,7 @@ setupErrorHandler(server);
 const start = async () => {
   try {
     await server.listen({ port: config.PORT, host: '0.0.0.0' });
-    console.log(`MegaTicketing API v1.0.0 listening on ${config.PORT}`);
+    console.log(`MegaTicketing API v2.1.0 listening on ${config.PORT}`);
   } catch (err) {
     server.log.fatal(err as Error);
     process.exit(1);

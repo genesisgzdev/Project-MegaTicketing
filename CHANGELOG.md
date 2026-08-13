@@ -1,34 +1,39 @@
 # Changelog
 
-All notable changes to this project will be documented in this file.
+All notable changes are documented here using Semantic Versioning.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [2.1.0] — 2026-08-13
+
+### Added
+- Live PostgreSQL-backed seat inventory and prices in the React client.
+- PaymentIntent creation guarded by a current user-owned reservation.
+- A native 40,000-request concurrency gate that fails on duplicate acceptance or any 5xx response.
+- Configurable reservation TTL shared by Redis, PostgreSQL reconciliation, seatmap state, and payment validation.
+- Release-grade architecture, security, operations, and contribution documentation.
+
+### Fixed
+- Fastify 5 compatibility for CORS and rate limiting.
+- Prisma/OpenTelemetry version mismatch that crashed the API at runtime.
+- Redis stream consumer startup race and incorrect propagation of rate-limit errors.
+- Version drift between workspace packages, API telemetry, and runtime logs.
+
+### Verified
+- `npm run build` passes for all workspaces.
+- 24 Vitest tests pass.
+- `npm audit --audit-level=moderate` reports zero vulnerabilities.
+- Real Docker load: 40,000 concurrent reservation attempts, exactly one `201`, zero `5xx`.
 
 ## [2.0.0]
 
 ### Added
-- **Distributed Redis Locking**: Implemented a distributed locking pattern using atomic Lua scripting to ensure data consistency in high-concurrency environments.
-- **Stripe Integration**: Robust payment flow with idempotency support, automatic retry logic for webhooks, and circuit breaker patterns for resilience.
-- **Containerized Architecture**: Full containerization using multi-stage Docker builds for optimized production images and `docker-compose` orchestration.
-- **Turborepo Monorepo**: Centralized management with intelligent caching and parallel execution pipelines across apps and packages.
-- **Type-Safe Persistence**: Integrated Prisma ORM for PostgreSQL with automated client generation and migration workflows.
-- **High-Performance API**: Backend powered by Fastify with Zod payload validation and `jose` for secure JWT handling.
-- **Interactive Frontend**: React 18 UI with Vite and React Three Fiber for WebGL-based seat mapping and real-time updates.
-- **Automated Security Pipelines**: Integrated Snyk and OSV-Scanner into GitHub Actions for continuous security auditing and dependency scanning.
+- Distributed Redis locking with PostgreSQL as the reservation authority.
+- Stripe PaymentIntents, signed webhooks, retries, and circuit breakers.
+- Docker Compose, Turborepo, Prisma, Fastify, Zod, JWT validation, React and Vite.
+- Metrics, health/readiness endpoints, WebSocket operations and deployment material.
 
 ### Fixed
-- Improved environment variable validation and runtime configuration management.
-- Optimized Docker build layers to reduce final image size.
-- Resolved race conditions in the seat reservation state machine.
+- Environment validation, Docker build layering, CORS, rate limiting and reservation race handling.
 
-### Security
-- Automated SAST/SCA scanning in CI/CD pipelines.
-- Enhanced CORS policies and granular rate limiting per service.
-# Unreleased — 2026-08-13
+## [1.0.0-rc.1]
 
-- Reemplazado el mapa de asientos inventado por inventario y precios leídos desde PostgreSQL.
-- Añadidos `GET /events/:eventId/seats` y `POST /payments/intents`.
-- Añadida prueba de carrera real para 40.000 peticiones contra un mismo asiento.
-- Corregidos retries Stripe: un fallo de procesamiento ya no bloquea indefinidamente el retry legítimo.
-- Documentadas fuentes de verdad, límites de escala y garantías verificables.
+- Initial Core API and SPA release.

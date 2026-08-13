@@ -5,7 +5,7 @@ on:
       tag:
         description: 'Version tag'
         required: true
-        default: 'v1.0.0-rc.1'
+        default: 'v2.1.0'
 jobs:
   release:
     runs-on: ubuntu-latest
@@ -19,6 +19,6 @@ jobs:
           tag_name: ${{ github.event.inputs.tag }}
           name: ${{ github.event.inputs.tag }}
           body: |
-            Core Ticketing API and SPA v1.0.0-rc.1
+            MegaTicketing v2.1.0: PostgreSQL-authoritative reservations, live seat inventory, Stripe idempotency, Redis locking, and a verified 40,000-request concurrency gate.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
