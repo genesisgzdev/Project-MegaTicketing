@@ -8,9 +8,9 @@
     "start": "node dist/index.js"
   },
   "dependencies": {
-    "@fastify/cors": "^9.0.1",
+    "@fastify/cors": "^11.3.0",
     "@fastify/otel": "^0.20.1",
-    "@fastify/rate-limit": "^10.3.0",
+    "@fastify/rate-limit": "^11.2.0",
     "@fastify/websocket": "^11.2.0",
     "@opentelemetry/api": "^1.9.1",
     "@opentelemetry/exporter-trace-otlp-grpc": "^0.221.0",
@@ -19,7 +19,6 @@
     "@opentelemetry/resources": "^2.10.0",
     "@opentelemetry/sdk-node": "^0.221.0",
     "@opentelemetry/semantic-conventions": "^1.43.0",
-    "@prisma/instrumentation": "^7.9.1",
     "fastify": "^5.8.4",
     "fastify-metrics": "^13.2.0",
     "ioredis": "^5.10.1",

@@ -7,21 +7,29 @@ export class PubSubService {
   private readonly consumerName = `node_${process.pid}_${Date.now()}`;
 
   constructor(private logger: FastifyBaseLogger) {
-    this.initConsumerGroup();
+    void this.initConsumerGroup();
   }
 
   private async initConsumerGroup() {
-    try {
-      await redis.xgroup('CREATE', this.streamName, this.groupName, '0', 'MKSTREAM');
-      this.logger.info(`Consumer Group '${this.groupName}' initialized on '${this.streamName}'`);
-    } catch (err: unknown) {
-      const error = err as Error;
-      if (!error.message.includes('BUSYGROUP')) {
-        this.logger.error(error, 'Failed to initialize Redis Consumer Group');
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      try {
+        await redis.xgroup('CREATE', this.streamName, this.groupName, '0', 'MKSTREAM');
+        this.logger.info(`Consumer Group '${this.groupName}' initialized on '${this.streamName}'`);
+        this.consumeLoop();
+        this.recoveryLoop();
+        return;
+      } catch (err: unknown) {
+        const error = err as Error;
+        if (error.message.includes('BUSYGROUP')) {
+          this.consumeLoop();
+          this.recoveryLoop();
+          return;
+        }
+        this.logger.warn({ attempt, err: error }, 'Redis stream group not ready; retrying');
+        await new Promise((resolve) => setTimeout(resolve, Math.min(1000 * (attempt + 1), 5000)));
       }
     }
-    this.consumeLoop();
-    this.recoveryLoop();
+    this.logger.error('Redis stream consumer disabled after initialization retries');
   }
 
   async publishOrderReserved(payload: Record<string, any>) {

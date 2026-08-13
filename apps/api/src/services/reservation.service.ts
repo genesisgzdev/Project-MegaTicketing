@@ -1,5 +1,6 @@
 import { lockSeat, releaseSeat, markSeatAsPaid, isEventProcessed, markEventProcessed } from '../redis';
 import { db } from '../db';
+import { config } from '../config';
 
 /**
  * ReservationService: Encapsulates logic for seat availability and locking.
@@ -14,7 +15,7 @@ export class ReservationService {
 
     try {
       await db.$transaction(async (transaction) => {
-        const expiredBefore = new Date(Date.now() - 30_000);
+        const expiredBefore = new Date(Date.now() - config.SEAT_LOCK_TTL_MS);
         const expiredSeats = await transaction.seat.findMany({
           where: { id: seatId, eventId, isLocked: true, lockedAt: { lt: expiredBefore } },
           select: { id: true },

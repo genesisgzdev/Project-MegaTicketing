@@ -38,9 +38,9 @@ server.register(metrics, { endpoint: '/metrics' });
 // Rate Limiting Configuration
 let defenseActive = false;
 server.register(rateLimit as any, {
+  global: config.NODE_ENV === 'production',
   max: 100,
   timeWindow: '1 minute',
-  skip: () => config.NODE_ENV !== 'production' && !defenseActive,
   redis: redis,
   keyGenerator: (req: any) => req.ip
 } as any);

@@ -69,7 +69,7 @@ Con un evento, asiento y usuario existentes en la base:
 npm run load:test -- http://localhost:3001 EVENT_UUID SEAT_UUID USER_UUID 40000 1000
 ```
 
-El resultado debe reportar exactamente un `201`, el resto `409`, y `invariant.exactlyOneAccepted: true`. Esta prueba golpea la API real; no mockea Redis, PostgreSQL ni el controlador.
+El resultado debe reportar exactamente un `201`, ningún `5xx` y `invariant.safe: true`. El resto puede ser `409` por carrera o `403` por la defensa de abuso. Esta prueba golpea la API real; no mockea Redis, PostgreSQL ni el controlador. El TTL de reserva se controla con `SEAT_LOCK_TTL_MS` y vale 30 segundos por defecto.
 
 ## Operación
 

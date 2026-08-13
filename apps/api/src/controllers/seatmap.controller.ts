@@ -1,6 +1,7 @@
 import { FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { db } from '../db';
+import { config } from '../config';
 
 const ParamsSchema = z.object({ eventId: z.string().uuid() });
 
@@ -27,7 +28,7 @@ export class SeatmapController {
         ticket: { select: { status: true } },
       },
     });
-    const lockExpiry = Date.now() - 30_000;
+    const lockExpiry = Date.now() - config.SEAT_LOCK_TTL_MS;
 
     return reply.send({
       event,

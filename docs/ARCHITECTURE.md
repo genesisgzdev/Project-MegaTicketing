@@ -24,7 +24,7 @@ LOCKED + timeout -> Ticket CANCELLED y Seat disponible
 PAID -> inmutable frente a nuevas reservas
 ```
 
-El TTL actual es 30 segundos y debe ser igual en Redis, reconciliación SQL, mapa y payment intent. Cambiarlo exige cambiar los cuatro puntos y la prueba de carga.
+El TTL por defecto es 30 segundos y se controla con `SEAT_LOCK_TTL_MS`; la misma configuración se usa en Redis, reconciliación SQL, mapa y payment intent. Cambiarlo exige revisar la ventana de carga y las expectativas de producto.
 
 ## Escala y límites
 

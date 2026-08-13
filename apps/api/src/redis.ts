@@ -72,7 +72,7 @@ redis.on('error', (err) => console.error('CRITICAL: Redis Connection Lost', err)
 const redlock = new RedlockProcessor(redis);
 
 export const lockSeat = async (eventId: string, seatId: string, userId: string): Promise<string | null> => {
-  return await redlock.lock(`${eventId}:${seatId}`, 30000);
+  return await redlock.lock(`${eventId}:${seatId}`, config.SEAT_LOCK_TTL_MS);
 };
 
 export const releaseSeat = async (eventId: string, seatId: string, lockToken: string): Promise<boolean> => {

@@ -36,5 +36,9 @@ await Promise.all(Array.from({ length: concurrency }, worker));
 const elapsed = performance.now() - startedAt;
 const successes = statuses.get(201) || 0;
 const conflicts = statuses.get(409) || 0;
-console.log(JSON.stringify({ endpoint, requestCount, concurrency, elapsedMs: Math.round(elapsed), requestsPerSecond: Math.round(requestCount / (elapsed / 1000)), statuses: Object.fromEntries(statuses), invariant: { exactlyOneAccepted: successes === 1, accepted: successes, conflicts }, }, null, 2));
-if (successes !== 1) process.exitCode = 1;
+const serverErrors = [...statuses.entries()]
+  .filter(([status]) => Number.isInteger(status) && status >= 500)
+  .reduce((total, [, count]) => total + count, 0);
+const safe = successes === 1 && serverErrors === 0;
+console.log(JSON.stringify({ endpoint, requestCount, concurrency, elapsedMs: Math.round(elapsed), requestsPerSecond: Math.round(requestCount / (elapsed / 1000)), statuses: Object.fromEntries(statuses), invariant: { exactlyOneAccepted: successes === 1, noServerErrors: serverErrors === 0, safe, accepted: successes, conflicts, serverErrors }, }, null, 2));
+if (!safe) process.exitCode = 1;

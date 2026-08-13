@@ -41,6 +41,11 @@ export function setupErrorHandler(app: FastifyInstance) {
         })),
       };
     } else if (error instanceof Error) {
+      if (typeof (error as Error & { statusCode?: number }).statusCode === 'number') {
+        statusCode = (error as Error & { statusCode: number }).statusCode;
+        code = statusCode === 429 ? 'RATE_LIMITED' : 'REQUEST_ERROR';
+        message = error.message;
+      }
       if (error.message.includes('ECONNREFUSED') || error.message.includes('TIMEOUT')) {
         statusCode = 503;
         code = 'SERVICE_UNAVAILABLE';

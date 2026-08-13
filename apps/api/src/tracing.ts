@@ -3,7 +3,6 @@ import { FastifyOtelInstrumentation } from '@fastify/otel';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-grpc';
 import { HttpInstrumentation } from '@opentelemetry/instrumentation-http';
 import { IORedisInstrumentation } from '@opentelemetry/instrumentation-ioredis';
-import { PrismaInstrumentation } from '@prisma/instrumentation';
 import { resourceFromAttributes } from '@opentelemetry/resources';
 import { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } from '@opentelemetry/semantic-conventions';
 import { config } from './config';
@@ -24,7 +23,6 @@ const sdk = new NodeSDK({
     new HttpInstrumentation(),
     new FastifyOtelInstrumentation({ registerOnInitialization: true }),
     new IORedisInstrumentation(),
-    new PrismaInstrumentation(),
   ],
 });
 

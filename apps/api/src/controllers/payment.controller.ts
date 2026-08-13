@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { authenticateUser } from '../auth';
 import { db } from '../db';
 import { createPaymentIntent } from '../payments';
+import { config } from '../config';
 
 const PaymentSchema = z.object({
   eventId: z.string().uuid(),
@@ -22,7 +23,7 @@ export class PaymentController {
       where: { seatId: input.seatId, userId: input.userId, status: 'LOCKED', seat: { eventId: input.eventId } },
       include: { seat: { select: { price: true, lockedAt: true } } },
     });
-    if (!ticket || !ticket.seat.lockedAt || ticket.seat.lockedAt.getTime() <= Date.now() - 30_000) {
+    if (!ticket || !ticket.seat.lockedAt || ticket.seat.lockedAt.getTime() <= Date.now() - config.SEAT_LOCK_TTL_MS) {
       return reply.status(409).send({ status: 'error', message: 'Reservation is missing or expired' });
     }
 
