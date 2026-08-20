@@ -15,11 +15,48 @@ jobs:
           cache: npm
       - name: Install locked dependencies
         run: npm ci --ignore-scripts
-      - name: Generate Prisma client from the checked-in schema
-        run: npx prisma generate --schema packages/database/prisma/schema.prisma
+      - name: Generate Prisma Client from the current schema
+        run: npm run db:generate
       - name: Dependency audit
         run: npm audit --audit-level=moderate
       - name: Compile every workspace
         run: npm run build
-      - name: Run tests
-        run: npm test -- --run
+      - name: Push integration schema
+        run: npm run db:push -- --accept-data-loss
+      - name: Run web tests
+        run: npm test
+      - name: Run API unit tests
+        run: npm run test:api
+      - name: Run PostgreSQL and Redis integration tests
+        run: npm run test:api:integration
+        env:
+          DATABASE_URL: postgresql://postgres:password@localhost:5432/megaticketing
+          REDIS_HOST: localhost
+          REDIS_PORT: 6379
+          NODE_ENV: test
+          AUTH_TEST_BYPASS: 'true'
+          STRIPE_SECRET_KEY: sk_test_ci
+          JWT_SECRET: ci-only-secret-that-is-at-least-32-characters
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: megaticketing
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -d megaticketing"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=10

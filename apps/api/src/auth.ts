@@ -3,7 +3,7 @@ import { FastifyRequest } from 'fastify';
 import { config } from './config';
 
 export async function authenticateUser(request: FastifyRequest, userId: string): Promise<boolean> {
-  if (config.NODE_ENV !== 'production') return true;
+  if (config.NODE_ENV === 'test' && config.AUTH_TEST_BYPASS) return true;
   const authorization = request.headers.authorization;
   if (!authorization?.startsWith('Bearer ')) return false;
 

@@ -1,5 +1,5 @@
 variable "cloudflare_zone_id" {
-  description = "Cloudflare zone receiving the ticketing edge rules."
+  description = "Cloudflare Zone ID used by the edge rules."
   type        = string
   sensitive   = true
 }

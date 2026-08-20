@@ -1,8 +1,9 @@
-import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
+import { FastifyInstance } from 'fastify';
 import Redis from 'ioredis';
 import { createHash } from 'crypto';
 
 const IDEMPOTENCY_KEY_PREFIX = 'idempotency:';
+const IDEMPOTENCY_LOCK_PREFIX = 'idempotency:lock:';
 const IDEMPOTENCY_TTL = 86400; // 24 hours
 
 export interface IdempotencyResult {
@@ -18,30 +19,60 @@ export function setupIdempotency(app: FastifyInstance, redis: Redis) {
       return;
     }
 
-    const key = `${IDEMPOTENCY_KEY_PREFIX}${createHash('sha256')
-      .update(idempotencyKey)
-      .digest('hex')}`;
+    const fingerprint = createHash('sha256')
+      .update(JSON.stringify({ method: request.method, url: request.url, body: request.body ?? null }))
+      .digest('hex');
+    const key = `${IDEMPOTENCY_KEY_PREFIX}${createHash('sha256').update(idempotencyKey).digest('hex')}`;
+    const lockKey = `${IDEMPOTENCY_LOCK_PREFIX}${createHash('sha256').update(idempotencyKey).digest('hex')}`;
 
     const cached = await redis.get(key);
     if (cached) {
-      const { statusCode, body } = JSON.parse(cached);
-      return reply.status(statusCode).send(body);
+      const entry = JSON.parse(cached) as { statusCode: number; body: string; fingerprint: string };
+      if (entry.fingerprint !== fingerprint) {
+        return reply.status(409).send({
+          status: 'error',
+          message: 'Idempotency key was already used with a different request',
+        });
+      }
+      reply.header('idempotent-replayed', 'true');
+      return reply.status(entry.statusCode).type('application/json').send(entry.body);
+    }
+
+    const acquired = await redis.set(lockKey, fingerprint, 'EX', IDEMPOTENCY_TTL, 'NX');
+    if (acquired !== 'OK') {
+      return reply.status(409).send({
+        status: 'error',
+        message: 'A request with this idempotency key is already being processed',
+      });
     }
 
     request.context.metadata.idempotencyKey = idempotencyKey;
     request.context.metadata.idempotencyCheckKey = key;
+    request.context.metadata.idempotencyLockKey = lockKey;
+    request.context.metadata.idempotencyFingerprint = fingerprint;
   });
-}
 
-export async function cacheIdempotentResponse(
-  redis: Redis,
-  checkKey: string,
-  statusCode: number,
-  body: any,
-) {
-  await redis.setex(
-    checkKey,
-    IDEMPOTENCY_TTL,
-    JSON.stringify({ statusCode, body }),
-  );
+  app.addHook('onSend', async (request, reply, payload) => {
+    const { idempotencyCheckKey, idempotencyLockKey, idempotencyFingerprint } = request.context.metadata;
+    if (!idempotencyCheckKey || !idempotencyLockKey || reply.statusCode >= 500) {
+      return payload;
+    }
+
+    await redis.setex(
+      idempotencyCheckKey,
+      IDEMPOTENCY_TTL,
+      JSON.stringify({
+        statusCode: reply.statusCode,
+        body: Buffer.isBuffer(payload) ? payload.toString() : String(payload),
+        fingerprint: idempotencyFingerprint,
+      }),
+    );
+    await redis.del(idempotencyLockKey);
+    return payload;
+  });
+
+  app.addHook('onError', async (request) => {
+    const lockKey = request.context?.metadata?.idempotencyLockKey;
+    if (lockKey) await redis.del(lockKey);
+  });
 }

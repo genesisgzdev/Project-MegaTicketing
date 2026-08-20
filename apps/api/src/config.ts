@@ -2,6 +2,7 @@
 
 const configSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+  AUTH_TEST_BYPASS: z.enum(['true', 'false']).default('false').transform((value) => value === 'true'),
   PORT: z.coerce.number().default(3001),
   SEAT_LOCK_TTL_MS: z.coerce.number().int().positive().default(30_000),
   REDIS_HOST: z.string().default('localhost'),

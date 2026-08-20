@@ -10,8 +10,12 @@
   "scripts": {
     "dev": "turbo run dev",
     "build": "turbo run build",
+    "db:generate": "npm run db:generate --workspace=@mega-ticketing/database",
+    "db:push": "npm run db:push --workspace=@mega-ticketing/database",
     "lint": "turbo run lint",
     "test": "vitest run --config apps/web/vitest.config.ts",
+    "test:api": "vitest run --config apps/api/vitest.config.ts",
+    "test:api:integration": "RUN_INTEGRATION=true vitest run --config apps/api/vitest.config.ts",
     "load:test": "node scripts/concurrency-check.mjs",
     "security": "snyk test",
     "prepare": "husky"
