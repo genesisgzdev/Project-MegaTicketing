@@ -45,13 +45,16 @@ jobs:
       - uses: actions/checkout@v4
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
-      - name: Terraform Init & Apply (Cloudflare WAF/Edge)
+      - name: Terraform validate and plan (Cloudflare WAF/Edge)
         working-directory: infra/cloudflare
         run: |
           terraform init
-          terraform apply -auto-approve
+          terraform validate
+          terraform plan -out=tfplan
+          terraform apply -auto-approve tfplan
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          TF_VAR_cloudflare_zone_id: ${{ secrets.CLOUDFLARE_ZONE_ID }}
 
   deploy-k8s:
     needs: deploy-infra
@@ -61,6 +64,7 @@ jobs:
       - name: Setup Helm
         uses: azure/setup-helm@v4
       - name: Deploy to Kubernetes
+        if: ${{ hashFiles('k8s/helm/megaticketing/Chart.yaml') != '' }}
         run: |
           helm upgrade --install megaticketing ./k8s/helm/megaticketing \
             --set image.repository=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }} \
@@ -68,3 +72,6 @@ jobs:
             --namespace production --create-namespace
         env:
           KUBECONFIG: ${{ secrets.KUBECONFIG_DATA }}
+      - name: Report unavailable Kubernetes chart
+        if: ${{ hashFiles('k8s/helm/megaticketing/Chart.yaml') == '' }}
+        run: echo 'Kubernetes deployment skipped; no k8s/helm/megaticketing chart is committed.'
