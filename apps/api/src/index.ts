@@ -15,6 +15,7 @@ import { setupRequestContext } from './request-context';
 import { setupErrorHandler } from './error-handler';
 import { SeatmapController } from './controllers/seatmap.controller';
 import { PaymentController } from './controllers/payment.controller';
+import { setupIdempotency } from './idempotency';
 
 /**
  * API Entrypoint.
@@ -27,6 +28,7 @@ const server = Fastify({
 });
 
 setupRequestContext(server);
+setupIdempotency(server, redis);
 
 const allowedOrigins = config.CORS_ORIGINS.split(',').map((origin) => origin.trim()).filter(Boolean);
 server.register(cors, { origin: allowedOrigins });
