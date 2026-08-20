@@ -2,6 +2,12 @@
 
 All notable changes are documented here using Semantic Versioning.
 
+## [2.1.1] — 2026-08-20
+
+### Changed
+- Updated workspace, API telemetry and runtime version metadata together.
+- Published the current reservation invariant, integration setup and operational limits in the README.
+
 ## [2.1.0] — 2026-08-13
 
 ### Added

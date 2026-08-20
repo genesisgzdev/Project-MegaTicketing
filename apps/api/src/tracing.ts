@@ -14,7 +14,7 @@ import { config } from './config';
 const sdk = new NodeSDK({
   resource: resourceFromAttributes({
     [ATTR_SERVICE_NAME]: 'mega-ticketing-api',
-    [ATTR_SERVICE_VERSION]: '2.1.0',
+    [ATTR_SERVICE_VERSION]: '2.1.1',
   }),
   traceExporter: new OTLPTraceExporter({
     url: config.OTEL_EXPORTER_OTLP_ENDPOINT,
