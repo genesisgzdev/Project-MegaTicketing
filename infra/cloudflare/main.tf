@@ -1,6 +1,7 @@
 resource "cloudflare_worker_script" "seatmap_cache" {
-  name    = "megaticketing-seatmap-cache"
-  content = file("${path.module}/seatmap-cache.js")
+  account_id = var.cloudflare_account_id
+  name       = "megaticketing-seatmap-cache"
+  content    = file("${path.module}/seatmap-cache.js")
 }
 
 resource "cloudflare_filter" "rate_limit_filter" {
