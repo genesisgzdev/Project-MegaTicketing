@@ -13,5 +13,4 @@ terraform {
   }
 }
 
-provider "google" {}
 provider "kubernetes" {}
