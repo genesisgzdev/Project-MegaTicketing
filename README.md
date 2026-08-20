@@ -1,66 +1,37 @@
 # MegaTicketing
 
-MegaTicketing es una plataforma de venta de entradas orientada a picos de demanda. Su regla de negocio no es una promesa de marketing: para un asiento concreto, una sola petición puede crear la reserva persistida; las demás reciben conflicto. La garantía se sostiene en PostgreSQL y se acelera con Redis.
+MegaTicketing es una plataforma de venta de entradas pensada para momentos de mucha demanda. La regla importante es simple: para un asiento concreto una sola solicitud puede quedarse con la reserva persistida. Las demás reciben un conflicto y no crean un ticket duplicado.
 
-## Estado real
+## Qué hay hoy
 
-- API Fastify + TypeScript.
-- PostgreSQL/Prisma como autoridad de reservas y tickets.
-- Redis como lock distribuido de corta duración, rate limiting y eventos.
-- Stripe PaymentIntents con idempotencia por evento/asiento/usuario.
-- WebSocket para inventario y señales operativas; el control administrativo requiere token.
-- React/Vite consume el mapa de asientos desde `/events/:eventId/seats`; no inventa disponibilidad local.
-- Node 22 en las imágenes Docker.
+- API con Fastify y TypeScript
+- PostgreSQL con Prisma como fuente de verdad para eventos, asientos y tickets
+- Redis para locks cortos, rate limiting, eventos e idempotencia
+- PaymentIntents de Stripe y webhooks firmados
+- Frontend React/Vite con inventario de asientos leído desde la API
+- WebSocket para actualizaciones en vivo y señales operativas
+- Docker, Compose, Terraform y manifiestos de Kubernetes para los entornos de despliegue
 
-## Mapa del sistema
+Redis ayuda a coordinar la carrera pero no decide quién compró. La reserva definitiva se confirma dentro de una transacción de PostgreSQL:
 
 ```text
-apps/api/
-  controllers/       HTTP, pagos, reservas, seatmap, seguridad y Stripe webhook
-  services/          reserva transaccional, fraude, salud, Pub/Sub y seguridad
-  redis.ts            nonce NX/PX, liberación Lua, estado realtime e idempotencia
-  db.ts               frontera Prisma/PostgreSQL
-  health-check.ts     health/readiness con dependencias reales
-  metrics.ts          métricas Prometheus
-apps/web/
-  App.tsx             consola operativa, health y WebSocket
-  CyberArena.tsx      mapa conectado al inventario PostgreSQL
-packages/
-  database/prisma/    Event, Seat, Ticket y estados persistidos
-  shared/             contratos Zod compartidos
-infra/
-  Docker/Compose      runtime local y contenedores multi-stage
-  Kubernetes/HPA      despliegue y escalado de API
-  Terraform            GKE y Cloudflare/WAF
-  nginx/               gateway HTTP/WebSocket sin cachear mutaciones
-scripts/
-  concurrency-check   prueba contra Redis + PostgreSQL reales, no mocks
-.github/workflows/
-  security            audit, build y tests en PR/push
-  release              release manual versionada
+POST /reserve
+  -> lock temporal en Redis
+  -> UPDATE condicional del asiento en PostgreSQL
+  -> ticket LOCKED
+  -> PaymentIntent y webhook firmado de Stripe
+  -> ticket PAID
 ```
 
-La ruta crítica es `POST /reserve` → nonce Redis → `UPDATE Seat ... WHERE isLocked=false` en PostgreSQL → único `Ticket` → Stripe webhook firmado → `PAID`. La interfaz, el gateway y las capas de infraestructura consumen ese estado; ninguna decide por sí sola que un asiento está vendido.
+Si Redis se reinicia PostgreSQL sigue evitando el doble ticket. Si la transacción falla el lock temporal se libera.
 
-## La invariante de venta única
+## Empezar en local
 
-La ruta `POST /reserve` sigue este orden:
-
-1. Valida UUIDs y, en producción, verifica que el JWT sea del `userId` solicitado.
-2. Obtiene un nonce con `SET NX PX` en Redis.
-3. En una transacción PostgreSQL libera un lock persistido expirado, ejecuta `UPDATE seat ... WHERE isLocked=false`, y solo si afecta una fila crea/actualiza el ticket `LOCKED`.
-4. Si la transacción falla libera el nonce Redis.
-5. El webhook Stripe cambia el ticket a `PAID` de forma condicional; el evento queda idempotentemente registrado.
-
-Redis nunca es la autoridad final. Si Redis se reinicia, PostgreSQL sigue impidiendo el doble ticket; si PostgreSQL rechaza la operación, el lock Redis se libera.
-
-## Desarrollo local
-
-Requisitos: Node 22+, npm 10+ y Docker.
+Necesitas Node 22 o superior, npm 10 y Docker.
 
 ```bash
 cp .env.example .env
-# Completa STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET y JWT_SECRET.
+# Completa los secretos de Stripe y JWT en .env
 npm ci
 npm run build
 npm test
@@ -70,43 +41,43 @@ Para levantar las dependencias:
 
 ```bash
 docker compose up -d db redis
-npx prisma db push --schema packages/database/prisma/schema.prisma
+npm run db:generate
+npm run db:push
 ```
 
-La API requiere secretos reales en Compose; no hay claves placeholder silenciosas en producción.
+No pongas claves de producción en el repositorio ni uses valores de ejemplo para probar una integración real.
 
-## Contratos principales
+## Rutas que importan
 
-`POST /reserve`
+`POST /reserve` recibe `eventId`, `seatId` y `userId`. Devuelve `201` cuando crea la reserva, `409` si otro proceso ganó la carrera y `401` cuando falta una identidad válida en producción.
 
-```json
-{"eventId":"uuid","seatId":"uuid","userId":"uuid"}
-```
+`GET /events/:eventId/seats` devuelve el estado actual de cada asiento. La interfaz consume esa respuesta y no mantiene una copia fija de la disponibilidad.
 
-Devuelve `201` una vez, `409` si el asiento está ocupado y `401` cuando producción no recibe un JWT válido.
+`POST /payments/intents` solo trabaja con una reserva `LOCKED` vigente del usuario.
 
-`GET /events/:eventId/seats` devuelve el evento, precio y estado real (`available`, `held`, `sold`). El frontend refresca ese inventario y no usa asientos hardcodeados.
+`POST /webhook` comprueba la firma de Stripe y procesa los eventos de pago de forma idempotente. Si el procesamiento falla se permite el retry legítimo del proveedor.
 
-`POST /payments/intents` solo acepta una reserva `LOCKED` vigente del usuario y devuelve el `clientSecret` de Stripe.
+## Comprobar la carrera de reservas
 
-`POST /webhook` verifica la firma raw de Stripe y acepta `payment_intent.succeeded` y `checkout.session.completed`. Los fallos liberan el marcador de procesamiento para permitir el retry legítimo de Stripe.
-
-## Prueba de concurrencia
-
-Con un evento, asiento y usuario existentes en la base:
+Con un evento, un asiento y un usuario existentes en la base puedes lanzar la prueba contra servicios reales:
 
 ```bash
 npm run load:test -- http://localhost:3001 EVENT_UUID SEAT_UUID USER_UUID 40000 1000
 ```
 
-El resultado debe reportar exactamente un `201`, ningún `5xx` y `invariant.safe: true`. El resto puede ser `409` por carrera o `403` por la defensa de abuso. Esta prueba golpea la API real; no mockea Redis, PostgreSQL ni el controlador. El TTL de reserva se controla con `SEAT_LOCK_TTL_MS` y vale 30 segundos por defecto.
+El resultado esperado es un solo `201`, ningún `5xx` y `invariant.safe: true`. El resto de intentos puede terminar en `409` o en una respuesta de defensa contra abuso. El TTL de una reserva se configura con `SEAT_LOCK_TTL_MS` y por defecto es de 30 segundos.
 
-## Operación
+## Operación y seguridad
 
-- `/health` verifica PostgreSQL, Redis y memoria.
-- `/health/ready` bloquea readiness si PostgreSQL o Redis no responden.
-- `/metrics` expone métricas Prometheus.
-- `CORS_ORIGINS`, `OTEL_EXPORTER_OTLP_ENDPOINT`, `WS_ADMIN_TOKEN` y `VITE_API_URL` son configuración explícita.
-- `npm audit` debe permanecer en cero antes de publicar.
+- `/health` comprueba PostgreSQL, Redis y memoria
+- `/health/ready` no informa readiness si una dependencia crítica está caída
+- `/metrics` expone métricas para Prometheus
+- `CORS_ORIGINS`, `OTEL_EXPORTER_OTLP_ENDPOINT`, `WS_ADMIN_TOKEN` y `VITE_API_URL` son configuración explícita
+- `npm run test:api:integration` ejecuta las pruebas de integración cuando hay servicios disponibles
+- `npm audit` y la revisión de seguridad deben formar parte del gate antes de publicar
 
-Para el detalle de invariantes, amenazas, límites y fallos aceptables, consultar [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) y [SECURITY.md](SECURITY.md).
+La arquitectura y las decisiones de seguridad están en [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) y [SECURITY.md](SECURITY.md).
+
+## Licencia
+
+Apache License 2.0. Consulta [LICENSE](LICENSE).
