@@ -1,33 +1,36 @@
-# Arquitectura operativa
+# MegaTicketing architecture
 
-## Fuentes de verdad
+~~~mermaid
+flowchart LR
+    W[React seat map] -->|GET seats every 5s| API[Fastify API]
+    O[Operations UI] -->|health metrics ws| API
+    U[Client with Bearer JWT] -->|POST reserve| API
+    API --> AUTH[JWT subject check]
+    API --> FRAUD[Redis velocity check]
+    AUTH --> R[ReservationService]
+    FRAUD --> R
+    R -->|SET NX PX and Lua release| Redis[(Redis)]
+    R -->|transactional seat update and ticket| PG[(PostgreSQL Prisma)]
+    R -->|XADD order reserved| Stream[(Redis Stream)]
+    P[Stripe] -->|signed POST webhook| API
+    API -->|conditional LOCKED to PAID| PG
+    API -->|health readiness| PG
+    API -->|health readiness and streams| Redis
+~~~
 
-| Dato | Autoridad | Caché/evento |
-|---|---|---|
-| Evento y precio | PostgreSQL | Redis/Cloudflare solo para lecturas explícitas |
-| Lock temporal | Redis nonce NX/PX | `Seat.lockedAt` permite reconciliación |
-| Ticket vendido | PostgreSQL `Ticket.status=PAID` | Redis refleja estado para realtime |
-| Pago | Stripe + webhook firmado | marcador Redis de idempotencia |
+## State authority
 
-## Carrera de 40.000 compradores
+- PostgreSQL owns Event, Seat, Ticket and TicketStatus. Seat.isLocked plus lockedAt is reconciled inside the reservation transaction.
+- Redis owns short-lived coordination keys and streams. Losing Redis must not create a second PostgreSQL ticket; losing PostgreSQL fails the reservation.
+- Stripe is authoritative for payment events. webhook checks the raw signed body and uses a Redis idempotency marker before confirming a locked ticket.
+- The web seat map polls the API. It does not receive seat availability from ws; ws is for operational Redis-stream messages and defense controls.
 
-La unicidad no depende de que una instancia de Node sea la primera. Todas las réplicas pueden recibir la petición. El nonce Redis reduce trabajo duplicado; la condición PostgreSQL `isLocked=false` es el árbitro final. Bajo READ COMMITTED, solo una transacción puede afectar esa fila; la restricción `Ticket.seatId UNIQUE` añade una segunda barrera.
+## Critical request path
 
-Una caída entre Redis y PostgreSQL puede dejar un lock temporal sin ticket, pero el lock expira y la siguiente reserva reconcilia `Seat.lockedAt`. Una caída después de crear el ticket no puede generar otro ticket para ese asiento.
+ReservationController validates UUIDs, verifies that the JWT subject equals the requested user, applies fraud checks, then calls ReservationService. The service obtains a Redis nonce and runs a PostgreSQL transaction that expires an old lock, conditionally updates the seat and creates or refreshes the unique ticket. A failed transaction releases the nonce.
 
-## Ciclo de vida
+PaymentController accepts only a current LOCKED ticket owned by the authenticated user. WebhookController conditionally moves that ticket to PAID; duplicate Stripe deliveries are ignored through the event marker.
 
-```text
-available -> Redis lock -> PostgreSQL seat locked + Ticket LOCKED
-LOCKED + payment_intent.succeeded -> Ticket PAID
-LOCKED + timeout -> Ticket CANCELLED y Seat disponible
-PAID -> inmutable frente a nuevas reservas
-```
+## Operational boundary
 
-El TTL por defecto es 30 segundos y se controla con `SEAT_LOCK_TTL_MS`; la misma configuración se usa en Redis, reconciliación SQL, mapa y payment intent. Cambiarlo exige revisar la ventana de carga y las expectativas de producto.
-
-## Escala y límites
-
-Redis de un nodo no es un Redlock multi-master; es un acelerador y protección de ráfaga. Para producción multi-región, usar Redis gestionado con failover y mantener PostgreSQL con una única autoridad transaccional por evento. Cloudflare puede absorber mapa/cache, pero nunca cachear `POST /reserve`, `/payments/intents` o `/webhook`.
-
-La prueba incluida mide el sistema completo y falla si acepta más de una petición. No prueba capacidad infinita: la capacidad real depende de PostgreSQL, Redis, límites de Stripe, red y configuración del despliegue.
+The repository has local Docker and deployment material for Kubernetes, Terraform and Cloudflare, but those manifests are not proof of a deployed environment. npm run load:test requires reachable PostgreSQL, Redis, seeded IDs and a running API.

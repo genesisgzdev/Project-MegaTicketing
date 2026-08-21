@@ -9,7 +9,7 @@ MegaTicketing es una plataforma de venta de entradas pensada para momentos de mu
 - Redis para locks cortos, rate limiting, eventos e idempotencia
 - PaymentIntents de Stripe y webhooks firmados
 - Frontend React/Vite con inventario de asientos leído desde la API
-- WebSocket para actualizaciones en vivo y señales operativas
+- WebSocket para señales operativas y lectura de Redis Streams; el mapa de asientos se actualiza consultando la API
 - Docker, Compose, Terraform y manifiestos de Kubernetes para los entornos de despliegue
 
 Redis ayuda a coordinar la carrera pero no decide quién compró. La reserva definitiva se confirma dentro de una transacción de PostgreSQL:
