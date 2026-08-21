@@ -1,8 +1,10 @@
 # MegaTicketing
 
-MegaTicketing es una plataforma de venta de entradas pensada para momentos de mucha demanda. La regla importante es simple: para un asiento concreto una sola solicitud puede quedarse con la reserva persistida. Las demás reciben un conflicto y no crean un ticket duplicado.
+Plataforma de entradas para escenarios de alta concurrencia. La propiedad que define el sistema es verificable: para un asiento y evento, como máximo una solicitud consigue la reserva persistida; las demás reciben conflicto y no crean un ticket duplicado.
 
-## Qué hay hoy
+En 30 segundos: React lee el inventario desde la API, Fastify valida identidad y reserva, Redis coordina la carrera corta y PostgreSQL decide la reserva definitiva. Stripe mueve el ticket de `LOCKED` a `PAID` mediante webhook firmado. Si Redis cae, PostgreSQL sigue siendo la autoridad.
+
+## Qué hay
 
 - API con Fastify y TypeScript
 - PostgreSQL con Prisma como fuente de verdad para eventos, asientos y tickets
@@ -12,7 +14,9 @@ MegaTicketing es una plataforma de venta de entradas pensada para momentos de mu
 - WebSocket para señales operativas y lectura de Redis Streams; el mapa de asientos se actualiza consultando la API
 - Docker, Compose, Terraform y manifiestos de Kubernetes para los entornos de despliegue
 
-Redis ayuda a coordinar la carrera pero no decide quién compró. La reserva definitiva se confirma dentro de una transacción de PostgreSQL:
+Docker, Kubernetes, Terraform, Nginx y Cloudflare están configurados en el repositorio. `PubSubService` registra y confirma los mensajes de Redis Streams. El despliegue y las tareas posteriores de fulfillment requieren configuración externa. Ver [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) y [`docs/DEPLOYMENT_PREFLIGHT.md`](docs/DEPLOYMENT_PREFLIGHT.md).
+
+## Flujo de una reserva
 
 ```text
 POST /reserve
@@ -22,6 +26,8 @@ POST /reserve
   -> PaymentIntent y webhook firmado de Stripe
   -> ticket PAID
 ```
+
+Health, métricas, WebSocket operativo, idempotencia, reintentos y reconciliación están descritos en el mapa técnico.
 
 Si Redis se reinicia PostgreSQL sigue evitando el doble ticket. Si la transacción falla el lock temporal se libera.
 
@@ -47,7 +53,7 @@ npm run db:push
 
 No pongas claves de producción en el repositorio ni uses valores de ejemplo para probar una integración real.
 
-## Rutas que importan
+## Lo esencial
 
 `POST /reserve` recibe `eventId`, `seatId` y `userId`. Devuelve `201` cuando crea la reserva, `409` si otro proceso ganó la carrera y `401` cuando falta una identidad válida en producción.
 
@@ -57,7 +63,7 @@ No pongas claves de producción en el repositorio ni uses valores de ejemplo par
 
 `POST /webhook` comprueba la firma de Stripe y procesa los eventos de pago de forma idempotente. Si el procesamiento falla se permite el retry legítimo del proveedor.
 
-## Comprobar la carrera de reservas
+## Prueba que realmente importa
 
 Con un evento, un asiento y un usuario existentes en la base puedes lanzar la prueba contra servicios reales:
 
@@ -65,9 +71,9 @@ Con un evento, un asiento y un usuario existentes en la base puedes lanzar la pr
 npm run load:test -- http://localhost:3001 EVENT_UUID SEAT_UUID USER_UUID 40000 1000
 ```
 
-El resultado esperado es un solo `201`, ningún `5xx` y `invariant.safe: true`. El resto de intentos puede terminar en `409` o en una respuesta de defensa contra abuso. El TTL de una reserva se configura con `SEAT_LOCK_TTL_MS` y por defecto es de 30 segundos.
+El resultado esperado es un solo `201`, ningún `5xx` y `invariant.safe: true`. El resto puede terminar en `409` o en una respuesta de defensa contra abuso. El TTL se configura con `SEAT_LOCK_TTL_MS` y por defecto es de 30 segundos. Esta prueba necesita API, PostgreSQL, Redis y datos sembrados; una ejecución sin esos servicios no demuestra concurrencia real.
 
-## Operación y seguridad
+## Dependencias y límites de confianza
 
 - `/health` comprueba PostgreSQL, Redis y memoria
 - `/health/ready` no informa readiness si una dependencia crítica está caída
@@ -75,6 +81,8 @@ El resultado esperado es un solo `201`, ningún `5xx` y `invariant.safe: true`. 
 - `CORS_ORIGINS`, `OTEL_EXPORTER_OTLP_ENDPOINT`, `WS_ADMIN_TOKEN` y `VITE_API_URL` son configuración explícita
 - `npm run test:api:integration` ejecuta las pruebas de integración cuando hay servicios disponibles
 - `npm audit` y la revisión de seguridad deben formar parte del gate antes de publicar
+
+PostgreSQL es la fuente de verdad de asientos y tickets. Redis es coordinación temporal, rate limiting, idempotencia y stream. Stripe es una dependencia externa para pagos y su webhook firmado es la transición de pago. React no decide disponibilidad y los manifiestos no equivalen a un despliegue observado.
 
 La arquitectura y las decisiones de seguridad están en [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) y [SECURITY.md](SECURITY.md).
 
