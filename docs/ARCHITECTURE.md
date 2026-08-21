@@ -2,6 +2,10 @@
 
 La arquitectura se entiende mejor separando disponibilidad, reserva, pago y operación. Cada flujo tiene una autoridad distinta y el frontend no decide estados de venta.
 
+## Cómo leerlo
+
+La primera figura ubica las dependencias. La segunda sigue una reserva que compite con otras. La tercera muestra los estados persistidos. PostgreSQL decide el ticket.
+
 ## 1. Topología de ejecución
 
 ~~~mermaid
