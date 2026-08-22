@@ -41,7 +41,16 @@ export class PaymentController {
       reservationKey: `${ticket.id}:${ticket.createdAt.toISOString()}`,
     });
     const binding = await db.ticket.updateMany({
-      where: { id: ticket.id, status: 'LOCKED', userId: input.userId },
+      // The ticket row is recycled when a lock expires. Keep the generation
+      // read before Stripe in the conditional update and never overwrite an
+      // already-bound intent. A late Stripe response then fails closed.
+      where: {
+        id: ticket.id,
+        status: 'LOCKED',
+        userId: input.userId,
+        createdAt: ticket.createdAt,
+        paymentIntentId: null,
+      },
       data: { paymentIntentId: paymentIntent.id, paymentAmountMinor: amountMinor, paymentCurrency: currency },
     });
     if (binding.count !== 1) {
