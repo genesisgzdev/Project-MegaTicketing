@@ -45,7 +45,10 @@ cp .env.example .env
 npm ci
 npm run build
 npm test
+npm run test:api
 ```
+
+`npm run test:api` es la suite unitaria y no necesita PostgreSQL ni Redis. La prueba de runtime que verifica la reserva contra ambos servicios se ejecuta con `npm run test:api:integration`; necesita una base PostgreSQL y Redis disponibles y no debe sustituirse por mocks ni por el fallback del circuit breaker.
 
 Para levantar las dependencias:
 
