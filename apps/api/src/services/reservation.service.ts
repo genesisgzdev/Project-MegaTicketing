@@ -92,7 +92,14 @@ export class ReservationService {
 
       const ticket = await transaction.ticket.findFirst({
         where: { seatId, seat: { eventId } },
-        select: { id: true, status: true, paymentIntentId: true, paymentAmountMinor: true, paymentCurrency: true },
+        select: {
+          id: true,
+          status: true,
+          paymentIntentId: true,
+          paymentAmountMinor: true,
+          paymentCurrency: true,
+          seat: { select: { lockedAt: true } },
+        },
       });
       if (!ticket) return 'expired';
       // Stripe may deliver checkout.session.completed and payment_intent.succeeded
@@ -107,6 +114,18 @@ export class ReservationService {
       }
       if (payment?.currency && ticket.paymentCurrency && ticket.paymentCurrency !== payment.currency.toLowerCase()) {
         throw new Error('Payment currency does not match the reservation');
+      }
+      const expiredBefore = new Date(Date.now() - config.SEAT_LOCK_TTL_MS);
+      if (!ticket.seat.lockedAt || ticket.seat.lockedAt <= expiredBefore) {
+        await transaction.ticket.update({
+          where: { id: ticket.id },
+          data: { status: 'CANCELLED' },
+        });
+        await transaction.seat.updateMany({
+          where: { id: seatId, isLocked: true },
+          data: { isLocked: false, lockedAt: null },
+        });
+        return 'expired';
       }
       await transaction.ticket.update({
         where: { id: ticket.id },
