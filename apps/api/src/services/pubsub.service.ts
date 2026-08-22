@@ -2,6 +2,19 @@ import { FastifyBaseLogger } from 'fastify';
 import redis from '../redis';
 import { db } from '../db';
 
+export function decodeStreamPayload(fields: string[]): Record<string, unknown> {
+  const values: Record<string, string> = {};
+  for (let index = 0; index + 1 < fields.length; index += 2) {
+    values[fields[index]] = fields[index + 1];
+  }
+  if (values.payload) return JSON.parse(values.payload) as Record<string, unknown>;
+  return {
+    outboxId: values.outboxId,
+    eventType: values.eventType,
+    aggregateId: values.aggregateId,
+  };
+}
+
 export class PubSubService {
   private readonly streamName = 'stream:orders:reserved';
   private readonly groupName = 'order_processors';
@@ -84,7 +97,7 @@ export class PubSubService {
           const messages = result[0][1];
           for (const message of messages) {
             const [messageId, fields] = message;
-            const payload = JSON.parse(fields[1]);
+            const payload = decodeStreamPayload(fields as string[]);
             this.logger.info({ messageId, payload }, 'Processing reserved order...');
             await redis.xack(this.streamName, this.groupName, messageId);
           }
@@ -101,12 +114,12 @@ export class PubSubService {
       try {
         const pending = await redis.xpending(this.streamName, this.groupName, '-', '+', 100);
         for (const p of pending) {
-          const [messageId, consumer, idleTime, deliveryCount] = p as any;
+              const [messageId, consumer, idleTime, deliveryCount] = p as any;
           if (idleTime > 60000) {
             this.logger.warn({ messageId, consumer, idleTime }, 'Claiming orphaned message');
             const claimed = await redis.xclaim(this.streamName, this.groupName, this.consumerName, 60000, messageId);
             if (claimed && claimed.length > 0) {
-              const payload = JSON.parse((claimed[0][1] as string[])[1]);
+              const payload = decodeStreamPayload(claimed[0][1] as string[]);
               this.logger.info({ messageId, payload }, 'Processing recovered order...');
               await redis.xack(this.streamName, this.groupName, messageId);
             }

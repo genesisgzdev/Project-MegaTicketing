@@ -21,6 +21,7 @@ describe('WebhookRetryManager', () => {
     const payload = { orderId: 'order_456' };
 
     await retryManager.scheduleRetry(webhookId, payload, 0);
+    expect(await redis.ttl('webhook_retry:webhook_123:1')).toBeGreaterThan(5);
 
     const retries = await retryManager.getPendingRetries();
     expect(retries).toHaveLength(1);
