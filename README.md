@@ -55,6 +55,8 @@ npm run db:generate
 npm run db:push
 ```
 
+La imagen de la API usa un build multi-stage y arranca con `apps/api/dist/apps/api/src/index.js`, que es la salida real del `tsconfig` actual. El contenedor no crea PostgreSQL ni Redis y necesita las variables de `.env.example` inyectadas por el entorno.
+
 No pongas claves de producción en el repositorio ni uses valores de ejemplo para probar una integración real.
 
 ## Lo esencial
