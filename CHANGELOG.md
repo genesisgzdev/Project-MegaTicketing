@@ -2,6 +2,17 @@
 
 All notable changes are documented here using Semantic Versioning.
 
+## [2.1.3] — 2026-08-22
+
+### Fixed
+
+- Mantiene la publicación de reservas detrás del outbox transaccional y elimina la ruta directa al stream.
+
+### Riesgo y actualización
+
+- No cambia el esquema ni requiere migración.
+- La publicación de `ticket.reserved` queda centralizada en el publisher que reclama filas outbox.
+
 ## [2.1.2] — 2026-08-22
 
 ### Fixed
