@@ -36,6 +36,7 @@ export class PaymentController {
       eventId: input.eventId,
       seatId: input.seatId,
       userId: input.userId,
+      ticketId: ticket.id,
       amountMinor: String(amountMinor),
       currency,
     });

@@ -22,10 +22,14 @@ export function toMinorUnits(amount: string | number, currency: string): number 
   return Number(minor);
 }
 
+export function paymentIntentIdempotencyKey(ticketId: string): string {
+  return `pay_ticket_${ticketId}`;
+}
+
 export const createPaymentIntent = async (amount: string | number, currency: string = 'usd', metadata: Record<string, string>) => {
   try {
-    // Generate an idempotency key from seat and event
-    const idempotencyKey = `pay_${metadata.eventId}_${metadata.seatId}_${metadata.userId}`;
+    const ticketId = metadata.ticketId;
+    if (!ticketId) throw new Error('Payment metadata must include ticketId');
 
     const paymentIntent = await stripe.paymentIntents.create({
       amount: toMinorUnits(amount, currency),
@@ -35,7 +39,7 @@ export const createPaymentIntent = async (amount: string | number, currency: str
         enabled: true,
       },
     }, {
-      idempotencyKey
+      idempotencyKey: paymentIntentIdempotencyKey(ticketId)
     });
     
     return paymentIntent;

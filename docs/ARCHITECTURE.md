@@ -91,6 +91,8 @@ La expiración se comprueba dentro de la misma transacción que procesa el webho
 
 El precio persistido en `Seat` incluye su moneda. La API no permite que el cliente reinterprete un importe en otra moneda; el `PaymentIntent`, el importe en unidades menores y la moneda quedan asociados al ticket. La transición a `PAID` comprueba esa asociación cuando Stripe entrega el webhook.
 
+La clave de idempotencia usada al crear el `PaymentIntent` se deriva de `ticket.id`. `eventId + seatId + userId` no identifica una generación de reserva porque un asiento puede reciclarse; el ticket concreto sí.
+
 Si Stripe entrega más de un tipo de evento para el mismo pago, un ticket que ya está `PAID` se considera repetición y no vuelve al camino de expiración ni solicita un refund.
 
 Los IDs de webhooks procesados también quedan en PostgreSQL con una clave única. Redis mantiene el lock breve de entrada; no guarda el único registro de un pago.
