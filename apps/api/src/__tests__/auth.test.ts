@@ -57,4 +57,13 @@ describe('JWT authentication claims', () => {
 
     await expect(authenticateUser(request as never, subject)).resolves.toBe(false);
   });
+
+  it('rejects a valid token when its subject differs from the requested user', async () => {
+    testEnv();
+    const otherSubject = '223e4567-e89b-12d3-a456-426614174000';
+    const { authenticateUser } = await import('../auth?subject-mismatch');
+    const request = { headers: { authorization: `Bearer ${await token({ expiry: '2h', subject: otherSubject })}` } };
+
+    await expect(authenticateUser(request as never, subject)).resolves.toBe(false);
+  });
 });
