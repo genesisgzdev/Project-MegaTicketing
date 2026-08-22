@@ -21,6 +21,8 @@ jobs:
         run: npm audit --audit-level=moderate
       - name: Compile every workspace
         run: npm run build
+      - name: Build API production image
+        run: docker build --tag megaticketing-api:${{ github.sha }} .
       - name: Push integration schema
         run: npm run db:push -- --accept-data-loss
         env:
