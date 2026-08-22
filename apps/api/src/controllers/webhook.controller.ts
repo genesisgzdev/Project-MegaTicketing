@@ -44,7 +44,16 @@ export class WebhookController {
           this.app.log.warn({ eventId: event.id }, 'Stripe event missing reservation metadata');
           return reply.status(400).send({ status: 'error', message: 'Payment metadata is incomplete' });
         }
-        await this.service.confirmReservation(eventId, seatId, event.id);
+        const outcome = await this.service.confirmReservation(eventId, seatId, event.id);
+        if (outcome === 'expired' && event.type === 'payment_intent.succeeded') {
+          const paymentIntentId = typeof payment.id === 'string' ? payment.id : undefined;
+          if (!paymentIntentId) throw new Error('Expired payment has no PaymentIntent id for refund');
+          await stripe.refunds.create(
+            { payment_intent: paymentIntentId },
+            { idempotencyKey: `refund:${event.id}` },
+          );
+          this.app.log.warn({ eventId: event.id, seatId }, 'Payment arrived after reservation expiry; refund requested');
+        }
       }
     } catch (error) {
       await redis.del(idempotencyKey);

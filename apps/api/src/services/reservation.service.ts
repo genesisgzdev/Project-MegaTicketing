@@ -75,12 +75,13 @@ export class ReservationService {
     await this.confirmReservation(eventId, seatId, `manual:${eventId}:${seatId}`);
   }
 
-  async confirmReservation(eventId: string, seatId: string, eventIdempotencyKey: string): Promise<void> {
-    await db.$transaction(async (transaction) => {
+  async confirmReservation(eventId: string, seatId: string, eventIdempotencyKey: string): Promise<'paid' | 'duplicate' | 'expired'> {
+    return db.$transaction(async (transaction) => {
+      let outcome: 'paid' | 'duplicate' | 'expired' = 'paid';
       try {
         await transaction.processedWebhookEvent.create({ data: { id: eventIdempotencyKey } });
       } catch (error) {
-        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') return;
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') return 'duplicate';
         throw error;
       }
 
@@ -88,7 +89,8 @@ export class ReservationService {
         where: { seatId, status: 'LOCKED', seat: { eventId } },
         data: { status: 'PAID' },
       });
-      if (updated.count !== 1) throw new Error('No locked reservation found for payment confirmation');
+      if (updated.count !== 1) outcome = 'expired';
+      return outcome;
     });
   }
 

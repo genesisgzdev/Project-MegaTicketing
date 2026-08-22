@@ -73,6 +73,8 @@ stateDiagram-v2
     available --> held: seat locked and ticket locked
     held --> available: expiry or cancellation
     held --> sold: signed payment success
+    held --> expired_payment: payment after expiry
+    expired_payment --> expired_payment: refund request retry
     sold --> sold: duplicate webhook ignored
     available --> available: failed reservation releases nonce
 ~~~
@@ -80,6 +82,8 @@ stateDiagram-v2
 Después del commit, un publicador lee `OutboxEvent` con `publishedAt IS NULL`, hace `XADD` y marca el registro como publicado. Si el proceso muere después del `XADD` y antes del update, puede haber una entrega duplicada; el consumidor debe usar `outboxId` como clave idempotente.
 
 PostgreSQL tiene `Ticket.seatId UNIQUE` y `Seat @@unique([eventId, seatNumber])`. Redis coordina la carrera, pero no es la autoridad del ticket. Stripe confirma el pago; no crea disponibilidad.
+
+Un `payment_intent.succeeded` posterior a la expiración queda registrado como evento procesado, mantiene el ticket cancelado y solicita un refund con una clave idempotente. No existe una transición `CANCELLED -> PAID`.
 
 Los IDs de webhooks procesados también quedan en PostgreSQL con una clave única. Redis mantiene el lock breve de entrada; no guarda el único registro de un pago.
 
