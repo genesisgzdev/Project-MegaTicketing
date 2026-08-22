@@ -52,6 +52,8 @@ All notable changes are documented here using Semantic Versioning.
 
 ## [Unreleased]
 
+- Los webhooks de pago rechazan bindings incompletos y esperan el reintento de Stripe en lugar de confirmar una carrera entre Stripe y PostgreSQL.
+- El canal WebSocket rechaza controles de defensa no conectados y ya no expone una configuración administrativa sin runtime detrás.
 - Exige `JWT_ISSUER` y `JWT_AUDIENCE` cuando la API arranca en producción; la firma sigue limitada a `HS256` y la identidad se toma del `sub` validado.
 
 ## [2.1.1] — 2026-08-20
