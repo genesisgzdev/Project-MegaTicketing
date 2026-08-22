@@ -29,7 +29,7 @@ flowchart TB
     HEALTH --> R
 ~~~
 
-El WebSocket `/ws` no es el canal del mapa de asientos: `CyberArena` hace polling. `/ws` consume streams operativos por evento y acepta controles de defensa solo con `x-admin-token` válido.
+El WebSocket `/ws` no es el canal del mapa de asientos: `CyberArena` hace polling. `/ws` consume streams operativos por evento y acepta controles de defensa solo con `x-admin-token` válido. Cada conexión mantiene como máximo una suscripción activa; reemplazarla cancela el lector y su conexión Redis anteriores.
 
 ## 2. Reserva bajo concurrencia
 
