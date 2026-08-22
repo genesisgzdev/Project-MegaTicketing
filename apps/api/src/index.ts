@@ -14,6 +14,7 @@ import { setupErrorHandler } from './error-handler';
 import { SeatmapController } from './controllers/seatmap.controller';
 import { PaymentController } from './controllers/payment.controller';
 import { setupIdempotency } from './idempotency';
+import { PubSubService } from './services/pubsub.service';
 
 /**
  * API Entrypoint.
@@ -80,6 +81,12 @@ server.register(async (app) => {
 });
 
 setupHealthCheck(server, db, redis);
+
+// The outbox publisher is part of the API process lifecycle. Without an
+// instance here, reservations remain durable in PostgreSQL but never reach
+// the stream. Each replica claims rows with SKIP LOCKED, so starting one
+// publisher per API process is safe.
+new PubSubService(server.log);
 
 /**
  * Global Error Handler.

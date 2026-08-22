@@ -86,13 +86,6 @@ export class ReservationService {
     }
   }
 
-  /**
-   * Marks a reserved ticket as PAID after webhook confirmation.
-   */
-  async markAsPaid(eventId: string, seatId: string): Promise<void> {
-    await this.confirmReservation(eventId, seatId, `manual:${eventId}:${seatId}`);
-  }
-
   async confirmReservation(
     eventId: string,
     seatId: string,
