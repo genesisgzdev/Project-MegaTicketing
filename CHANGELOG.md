@@ -55,6 +55,7 @@ All notable changes are documented here using Semantic Versioning.
 - Elimina el canal WebSocket sin productor ni autorización de evento. El panel web queda limitado a health e inventario HTTP y ya no presenta señales operativas que la API no expone.
 - Los webhooks de pago rechazan bindings incompletos y esperan el reintento de Stripe en lugar de confirmar una carrera entre Stripe y PostgreSQL.
 - La superficie operativa queda limitada a endpoints HTTP con contratos activos; no se anuncia un canal WebSocket sin productor ni autorización de evento.
+- Retira el hook de reconexión WebSocket y su mock de pruebas, que no tenían consumidores en la interfaz actual.
 - Exige `JWT_ISSUER` y `JWT_AUDIENCE` cuando la API arranca en producción; la firma sigue limitada a `HS256` y la identidad se toma del `sub` validado.
 - Limpia toda la vinculación de pago al reciclar un ticket expirado para otro usuario; un webhook tardío del PaymentIntent anterior ya no puede pagar la reserva nueva.
 - El endpoint de PaymentIntent devuelve `409` si la vinculación condicional del pago pierde una carrera antes de confirmar la reserva; ya no responde `201` con un secreto sin asociación local.
@@ -92,7 +93,7 @@ All notable changes are documented here using Semantic Versioning.
 - Distributed Redis locking with PostgreSQL as the reservation authority.
 - Stripe PaymentIntents, signed webhooks, retries, and circuit breakers.
 - Docker Compose, Turborepo, Prisma, Fastify, Zod, JWT validation, React and Vite.
-- Metrics, health/readiness endpoints, WebSocket operations and deployment material.
+- Metrics, health/readiness endpoints and deployment material.
 
 ### Fixed
 - Environment validation, Docker build layering, CORS, rate limiting and reservation race handling.
