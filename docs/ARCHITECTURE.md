@@ -8,7 +8,7 @@ La primera figura ubica las dependencias. La segunda sigue una reserva que compi
 
 ## 1. Topología de ejecución
 
-~~~mermaid
+```mermaid
 flowchart TB
     WEB[React seat map] -->|seat polling| HTTP[Fastify API]
     OPS[React operations] -->|health metrics socket| HTTP
@@ -27,13 +27,13 @@ flowchart TB
     HTTP --> HEALTH[health readiness metrics]
     HEALTH --> DB
     HEALTH --> R
-~~~
+```
 
 El WebSocket `/ws` no es el canal del mapa de asientos: `CyberArena` hace polling. `/ws` consume streams operativos por evento y acepta controles de defensa solo con `x-admin-token` válido.
 
 ## 2. Reserva bajo concurrencia
 
-~~~mermaid
+```mermaid
 sequenceDiagram
     participant C as client
     participant API as ReservationController
@@ -63,11 +63,11 @@ sequenceDiagram
         API-->>C: 201
       end
     end
-~~~
+```
 
 ## 3. Estado persistido
 
-~~~mermaid
+```mermaid
 stateDiagram-v2
     [*] --> available
     available --> held: seat locked and ticket locked
@@ -77,7 +77,7 @@ stateDiagram-v2
     expired_payment --> expired_payment: refund request retry
     sold --> sold: duplicate webhook ignored
     available --> available: failed reservation releases nonce
-~~~
+```
 
 Después del commit, un publicador reclama hasta 50 filas `OutboxEvent` con `FOR UPDATE SKIP LOCKED` y una lease de 60 segundos antes de hacer `XADD`. Si el proceso muere antes de marcar la fila, otra réplica puede recuperar el claim vencido. Si muere después de `XADD` y antes del update, sigue siendo posible una entrega duplicada; el consumidor debe usar `outboxId` como clave idempotente.
 
