@@ -107,15 +107,6 @@ export class PubSubService {
     this.logger.error('Redis stream consumer disabled after initialization retries');
   }
 
-  async publishOrderReserved(payload: Record<string, any>) {
-    try {
-      await redis.xadd(this.streamName, '*', 'payload', JSON.stringify(payload));
-    } catch (err) {
-      this.logger.error({ err, payload }, 'Critical failure: Could not append to Redis Stream');
-      throw err;
-    }
-  }
-
   private async consumeLoop() {
     while (true) {
       try {
