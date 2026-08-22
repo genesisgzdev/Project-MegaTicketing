@@ -11,14 +11,6 @@ vi.mock('../services/reservation.service', () => {
   };
 });
 
-vi.mock('../services/pubsub.service', () => {
-  return {
-    PubSubService: class {
-      publishOrderReserved = vi.fn().mockResolvedValue(undefined);
-    }
-  };
-});
-
 vi.mock('../services/fraud.service', () => {
   return {
     FraudService: class {
@@ -89,7 +81,11 @@ describe('ReservationController', () => {
     await controller.handleReservation(request as FastifyRequest, reply as FastifyReply);
     
     expect(reply.status).toHaveBeenCalledWith(201);
-    expect((controller as unknown as { fraudService: { detectFraud: import('vitest').Mock }, service: { reserveSeat: import('vitest').Mock }, pubsubService: { publishOrderReserved: import('vitest').Mock } }).pubsubService.publishOrderReserved).toHaveBeenCalled();
+    expect((controller as unknown as { service: { reserveSeat: import('vitest').Mock } }).service.reserveSeat).toHaveBeenCalledWith(
+      request.body.eventId,
+      request.body.seatId,
+      request.body.userId,
+    );
   });
 
   it('should return 409 if seat is locked', async () => {

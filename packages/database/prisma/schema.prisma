@@ -61,6 +61,19 @@ model ProcessedWebhookEvent {
   processedAt DateTime @default(now())
 }
 
+model OutboxEvent {
+  id          String    @id @default(uuid())
+  type        String
+  aggregateId String
+  payload     Json
+  createdAt   DateTime  @default(now())
+  publishedAt DateTime?
+  attempts    Int       @default(0)
+  lastError   String?
+
+  @@index([publishedAt, createdAt])
+}
+
 enum TicketStatus {
   LOCKED
   PAID

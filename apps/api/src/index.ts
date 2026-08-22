@@ -38,7 +38,6 @@ server.register(websocket);
 server.register(metrics, { endpoint: '/metrics' });
 
 // Rate Limiting Configuration
-let defenseActive = false;
 server.register(rateLimit as any, {
   global: config.NODE_ENV === 'production',
   max: 100,
@@ -72,9 +71,7 @@ server.addContentTypeParser('application/json', { parseAs: 'buffer' }, (req, bod
 server.register(async (app) => {
   const reservationController = new ReservationController(app);
   const webhookController = new WebhookController(app);
-  const securityController = new SecurityController(app, (status: boolean) => {
-    defenseActive = status;
-  });
+  const securityController = new SecurityController(app);
   const seatmapController = new SeatmapController();
   const paymentController = new PaymentController();
 

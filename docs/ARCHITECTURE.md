@@ -20,7 +20,8 @@ flowchart TB
     FRAUD --> RES[reservation service]
     RES -->|lock and release| R[(Redis keys)]
     RES -->|database transaction| DB[(PostgreSQL)]
-    RES -->|reserved event| ORD[Redis consumer]
+    RES -->|same transaction| OUT[(PostgreSQL outbox)]
+    OUT -->|retryable publisher| ORD[Redis Streams consumer]
     STRIPE[Stripe] -->|signed webhook| PAY[payment webhook]
     PAY -->|paid state| DB
     HTTP --> HEALTH[health readiness metrics]
@@ -39,6 +40,7 @@ sequenceDiagram
     participant A as auth and fraud
     participant R as Redis nonce
     participant PG as PostgreSQL transaction
+    participant O as PostgreSQL outbox
     participant X as Redis order stream
     C->>API: reserve event and seat
     API->>API: Zod UUID validation
@@ -57,7 +59,7 @@ sequenceDiagram
         API->>R: Lua release with nonce
         API-->>C: error or 409
       else committed
-        API->>X: XADD order reserved
+        API->>PG: INSERT outbox ticket.reserved
         API-->>C: 201
       end
     end
@@ -75,6 +77,8 @@ stateDiagram-v2
     available --> available: failed reservation releases nonce
 ~~~
 
+Después del commit, un publicador lee `OutboxEvent` con `publishedAt IS NULL`, hace `XADD` y marca el registro como publicado. Si el proceso muere después del `XADD` y antes del update, puede haber una entrega duplicada; el consumidor debe usar `outboxId` como clave idempotente.
+
 PostgreSQL tiene `Ticket.seatId UNIQUE` y `Seat @@unique([eventId, seatNumber])`. Redis coordina la carrera, pero no es la autoridad del ticket. Stripe confirma el pago; no crea disponibilidad.
 
 Los IDs de webhooks procesados también quedan en PostgreSQL con una clave única. Redis mantiene el lock breve de entrada; no guarda el único registro de un pago.
@@ -82,6 +86,8 @@ Los IDs de webhooks procesados también quedan en PostgreSQL con una clave únic
 ## 4. Operación y límites
 
 - `/health` devuelve estado de database, Redis y heap; `/health/ready` exige query SQL y `PING` Redis.
-- `PubSubService` consume y recupera mensajes pendientes del stream `stream:orders:reserved`; hoy el consumidor registra y hace ACK, no es un procesador externo de fulfillment.
+- `PubSubService` publica outbox pendientes, consume y recupera mensajes pendientes del stream `stream:orders:reserved`; hoy el consumidor registra y hace ACK, no es un procesador externo de fulfillment.
+- La presión del evento se registra como señal operativa. El bloqueo de fraude se calcula por actor y ventana, no por el total de compradores de un evento.
+- `defenseActive` ya no aparece como estado operativo: los mensajes WebSocket de activar o desactivar defensa se rechazan mientras no exista una política conectada al runtime.
 - Docker, Kubernetes, Terraform, Nginx y Cloudflare son superficies de despliegue configuradas en el repo, no prueba de una cuenta cloud desplegada.
 - `npm run load:test` necesita API, PostgreSQL, Redis y UUIDs sembrados. El resultado válido es exactamente un `201`, cero `5xx` e invariant safe.

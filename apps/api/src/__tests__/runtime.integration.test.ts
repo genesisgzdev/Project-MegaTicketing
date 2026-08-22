@@ -33,6 +33,7 @@ integration('PostgreSQL and Redis runtime gates', () => {
       return;
     }
     if (lockToken) await releaseSeat(eventId, seatId, lockToken);
+    await db.outboxEvent.deleteMany({ where: { aggregateId: seatId } });
     await db.ticket.deleteMany({ where: { seatId } });
     await db.seat.delete({ where: { id: seatId } });
     await db.event.delete({ where: { id: eventId } });
@@ -48,6 +49,7 @@ integration('PostgreSQL and Redis runtime gates', () => {
 
     const ticket = await db.ticket.findUnique({ where: { seatId } });
     expect(ticket?.status).toBe('LOCKED');
+    expect(await db.outboxEvent.count({ where: { aggregateId: seatId, type: 'ticket.reserved' } })).toBe(1);
   });
 
   it('replays an idempotent response and does not execute the handler twice', async () => {
@@ -67,6 +69,13 @@ integration('PostgreSQL and Redis runtime gates', () => {
     expect(second.headers['idempotent-replayed']).toBe('true');
     expect(second.json()).toEqual(first.json());
     expect(executions).toBe(1);
+    const reordered = await app.inject({ method: 'POST', url: '/runtime-gate', headers, payload: { value: 1, another: 'same-shape-check' } });
+    expect(reordered.statusCode).toBe(409);
+    const canonicalKey = `canonical-${randomUUID()}`;
+    const canonicalFirst = await app.inject({ method: 'POST', url: '/runtime-gate', headers: { 'idempotency-key': canonicalKey }, payload: { value: 1, another: 'same-shape-check' } });
+    const canonicalSecond = await app.inject({ method: 'POST', url: '/runtime-gate', headers: { 'idempotency-key': canonicalKey }, payload: { another: 'same-shape-check', value: 1 } });
+    expect(canonicalFirst.statusCode).toBe(200);
+    expect(canonicalSecond.headers['idempotent-replayed']).toBe('true');
     await app.close();
   });
 });

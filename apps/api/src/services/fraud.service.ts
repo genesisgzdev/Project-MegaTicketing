@@ -8,7 +8,7 @@ export class FraudService {
   private readonly VELOCITY_LIMIT = 5;
   private readonly VELOCITY_WINDOW = 10; // seconds
   
-  private readonly PATTERN_LIMIT = 20; // "Massive" threshold
+  private readonly EVENT_PRESSURE_LIMIT = 20;
   private readonly PATTERN_WINDOW = 10; // seconds
 
   /**
@@ -17,12 +17,12 @@ export class FraudService {
    * @param eventId - The ID of the event being booked
    * @returns Promise<boolean> - True if fraud is detected, false otherwise
    */
-  async detectFraud(ip: string, eventId: string): Promise<boolean> {
-    const isVelocityFraud = await this.checkVelocity(ip);
+  async detectFraud(ip: string, eventId: string, userId: string): Promise<boolean> {
+    const isVelocityFraud = await this.checkVelocity(ip, eventId, userId);
     if (isVelocityFraud) return true;
 
-    const isPatternFraud = await this.checkPattern(eventId);
-    if (isPatternFraud) return true;
+    // Event pressure is a signal for observability, never a global deny rule.
+    await this.recordEventPressure(eventId);
 
     return false;
   }
@@ -31,23 +31,23 @@ export class FraudService {
    * Velocity Check: Detects if a single IP is making too many requests.
    * Limit: > 5 attempts in 10 seconds.
    */
-  private async checkVelocity(ip: string): Promise<boolean> {
-    const key = `fraud:velocity:ip:${ip}`;
+  private async checkVelocity(ip: string, eventId: string, userId: string): Promise<boolean> {
+    const ipKey = `fraud:velocity:ip:${ip}:event:${eventId}`;
+    const userKey = `fraud:velocity:user:${userId}:event:${eventId}`;
     
-    const count = await redis.incr(key);
+    const [ipCount, userCount] = await Promise.all([redis.incr(ipKey), redis.incr(userKey)]);
     
-    if (count === 1) {
-      await redis.expire(key, this.VELOCITY_WINDOW);
-    }
+    if (ipCount === 1) await redis.expire(ipKey, this.VELOCITY_WINDOW);
+    if (userCount === 1) await redis.expire(userKey, this.VELOCITY_WINDOW);
 
-    return count > this.VELOCITY_LIMIT;
+    return ipCount > this.VELOCITY_LIMIT || userCount > this.VELOCITY_LIMIT;
   }
 
   /**
    * Pattern Matching: Detects massive attempts for the same event from different users.
    * Limit: > 20 attempts in 10 seconds for the same event.
    */
-  private async checkPattern(eventId: string): Promise<boolean> {
+  private async recordEventPressure(eventId: string): Promise<void> {
     const key = `fraud:pattern:event:${eventId}`;
     
     const count = await redis.incr(key);
@@ -56,8 +56,10 @@ export class FraudService {
       await redis.expire(key, this.PATTERN_WINDOW);
     }
 
-    return count > this.PATTERN_LIMIT;
+    if (count === this.EVENT_PRESSURE_LIMIT + 1) {
+      // Keep this signal available for metrics/operations without punishing every buyer.
+      await redis.expire(key, this.PATTERN_WINDOW);
+    }
   }
 }
-
 

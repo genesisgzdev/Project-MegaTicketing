@@ -6,13 +6,25 @@ const IDEMPOTENCY_KEY_PREFIX = 'idempotency:';
 const IDEMPOTENCY_LOCK_PREFIX = 'idempotency:lock:';
 const IDEMPOTENCY_TTL = 86400; // 24 hours
 
+function canonicalize(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalize);
+  if (value && typeof value === 'object' && !Buffer.isBuffer(value)) {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, entry]) => [key, canonicalize(entry)]),
+    );
+  }
+  return value;
+}
+
 export interface IdempotencyResult {
   isDuplicate: boolean;
   cachedResponse?: any;
 }
 
 export function setupIdempotency(app: FastifyInstance, redis: Redis) {
-  app.addHook('onRequest', async (request, reply) => {
+  app.addHook('preValidation', async (request, reply) => {
     const idempotencyKey = request.headers['idempotency-key'] as string;
 
     if (!idempotencyKey || request.method === 'GET') {
@@ -20,7 +32,7 @@ export function setupIdempotency(app: FastifyInstance, redis: Redis) {
     }
 
     const fingerprint = createHash('sha256')
-      .update(JSON.stringify({ method: request.method, url: request.url, body: request.body ?? null }))
+      .update(JSON.stringify({ method: request.method, url: request.url, body: canonicalize(request.body ?? null) }))
       .digest('hex');
     const key = `${IDEMPOTENCY_KEY_PREFIX}${createHash('sha256').update(idempotencyKey).digest('hex')}`;
     const lockKey = `${IDEMPOTENCY_LOCK_PREFIX}${createHash('sha256').update(idempotencyKey).digest('hex')}`;

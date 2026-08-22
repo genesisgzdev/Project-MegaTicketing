@@ -2,6 +2,15 @@
 
 All notable changes are documented here using Semantic Versioning.
 
+## [Unreleased]
+
+### Fixed
+
+- Calcula el fingerprint de idempotencia después de parsear el body y ordena sus claves.
+- Persiste reservas y eventos outbox en una misma transacción PostgreSQL.
+- Convierte importes a unidades menores sin redondeo binario antes de llamar a Stripe.
+- El fraude usa señales por actor; la presión total del evento queda como señal operativa.
+
 ## [2.1.1] — 2026-08-20
 
 ### Changed
