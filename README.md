@@ -63,6 +63,8 @@ No pongas claves de producción en el repositorio ni uses valores de ejemplo par
 
 `POST /reserve` recibe `eventId`, `seatId` y `userId`. Devuelve `201` cuando crea la reserva, `409` si otro proceso ganó la carrera y `401` cuando falta una identidad válida en producción.
 
+En producción el JWT debe incluir `iss` y `aud`, y la configuración exige `JWT_ISSUER` y `JWT_AUDIENCE`. La API limita el algoritmo a `HS256`, comprueba `sub` contra el usuario de la operación y deja que `jose` valide `exp` y `nbf`. En desarrollo y pruebas issuer y audience pueden omitirse.
+
 `GET /events/:eventId/seats` devuelve el estado actual de cada asiento. La interfaz consume esa respuesta y no mantiene una copia fija de la disponibilidad.
 
 `POST /payments/intents` solo trabaja con una reserva `LOCKED` vigente del usuario.

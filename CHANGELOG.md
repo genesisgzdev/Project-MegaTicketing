@@ -52,6 +52,8 @@ All notable changes are documented here using Semantic Versioning.
 
 ## [Unreleased]
 
+- Exige `JWT_ISSUER` y `JWT_AUDIENCE` cuando la API arranca en producción; la firma sigue limitada a `HS256` y la identidad se toma del `sub` validado.
+
 ## [2.1.1] — 2026-08-20
 
 ### Changed

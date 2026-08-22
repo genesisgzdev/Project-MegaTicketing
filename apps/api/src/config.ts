@@ -19,6 +19,14 @@ const configSchema = z.object({
   CORS_ORIGINS: z.string().default('http://localhost:5173'),
   WS_ADMIN_TOKEN: z.string().optional(),
   OTEL_EXPORTER_OTLP_ENDPOINT: z.string().url().default('http://localhost:4317'),
+}).superRefine((value, ctx) => {
+  if (value.NODE_ENV !== 'production') return;
+  if (!value.JWT_ISSUER) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['JWT_ISSUER'], message: 'JWT_ISSUER is required in production' });
+  }
+  if (!value.JWT_AUDIENCE) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['JWT_AUDIENCE'], message: 'JWT_AUDIENCE is required in production' });
+  }
 });
 
 export const config = configSchema.parse(process.env);

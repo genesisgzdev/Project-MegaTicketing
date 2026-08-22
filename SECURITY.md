@@ -6,7 +6,7 @@
 - Redis usa nonces aleatorios y Lua para liberar únicamente el lock que lo creó.
 - El pago se confirma desde un webhook Stripe firmado, no desde el navegador.
 - Los eventos Stripe se procesan con una marca idempotente; si el procesamiento falla, el lock de procesamiento se elimina para que Stripe pueda reintentar.
-- En producción `/reserve` y `/payments/intents` requieren JWT cuyo `sub` coincide con `userId`.
+- En producción `/reserve` y `/payments/intents` requieren JWT `HS256` con `sub`, `iss`, `aud`, `exp` y `nbf` válidos; `sub` debe coincidir con `userId` y `JWT_ISSUER`/`JWT_AUDIENCE` son obligatorios.
 - Los clientes WebSocket no pueden activar la defensa; el header `x-admin-token` solo habilita esa acción cuando coincide con `WS_ADMIN_TOKEN`.
 - Los secretos de Compose no tienen valores de producción implícitos.
 
