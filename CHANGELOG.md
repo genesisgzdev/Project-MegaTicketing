@@ -2,6 +2,12 @@
 
 All notable changes are documented here using Semantic Versioning.
 
+## Unreleased
+
+### Fixed
+
+- La idempotencia de PaymentIntents queda ligada a la generación concreta de la reserva. Al reciclar un ticket, una nueva reserva ya no puede reutilizar el PaymentIntent de una anterior.
+
 ## [2.1.4] — 2026-08-22
 
 ### Changed

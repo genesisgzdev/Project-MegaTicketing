@@ -79,6 +79,8 @@ Los eventos de Stripe procesados se guardan en PostgreSQL. Si un pago confirmado
 
 Los importes se convierten a unidades menores según la moneda antes de llamar a Stripe. El precio se toma de PostgreSQL, no del frontend.
 
+La clave de idempotencia de Stripe incluye la generación de la reserva. El registro `Ticket` puede reciclarse después de una expiración, pero una reserva nueva no debe reutilizar el PaymentIntent ni aceptar un webhook de la generación anterior.
+
 ## Prueba que realmente importa
 
 Con un evento, un asiento y un usuario existentes en la base puedes lanzar la prueba contra servicios reales:

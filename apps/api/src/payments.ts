@@ -22,10 +22,18 @@ export function toMinorUnits(amount: string | number, currency: string): number 
   return Number(minor);
 }
 
+export function paymentIntentIdempotencyKey(metadata: Record<string, string>): string {
+  const reservationKey = metadata.reservationKey;
+  if (!reservationKey) throw new Error('Payment metadata must include a reservation generation');
+  return `pay_${metadata.eventId}_${metadata.seatId}_${metadata.userId}_${reservationKey}`;
+}
+
 export const createPaymentIntent = async (amount: string | number, currency: string = 'usd', metadata: Record<string, string>) => {
   try {
-    // Generate an idempotency key from seat and event
-    const idempotencyKey = `pay_${metadata.eventId}_${metadata.seatId}_${metadata.userId}`;
+    // The ticket row is recycled after an expired reservation. The caller must
+    // include its generation so a late retry cannot reuse an older Stripe
+    // PaymentIntent for the new reservation.
+    const idempotencyKey = paymentIntentIdempotencyKey(metadata);
 
     const paymentIntent = await stripe.paymentIntents.create({
       amount: toMinorUnits(amount, currency),

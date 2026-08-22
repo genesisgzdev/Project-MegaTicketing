@@ -93,6 +93,8 @@ La expiración se comprueba dentro de la misma transacción que procesa el webho
 
 El precio persistido en `Seat` incluye su moneda. La API no permite que el cliente reinterprete un importe en otra moneda; el `PaymentIntent`, el importe en unidades menores y la moneda quedan asociados al ticket. La transición a `PAID` comprueba esa asociación cuando Stripe entrega el webhook.
 
+La idempotencia al crear un PaymentIntent también incluye la generación de la reserva (`Ticket.id` y `Ticket.createdAt`). Esto evita que el reciclaje de una fila después de una expiración reabra el PaymentIntent de una reserva anterior.
+
 Cuando un asiento expirado se recicla para otro usuario, la transacción limpia el `PaymentIntent`, importe, moneda, `paidAt` y `refundId` del ticket reutilizado. Un webhook tardío del comprador anterior encuentra un binding ausente y no puede convertir la nueva reserva en `PAID`.
 
 Si Stripe entrega más de un tipo de evento para el mismo pago, un ticket que ya está `PAID` se considera repetición y no vuelve al camino de expiración ni solicita un refund.

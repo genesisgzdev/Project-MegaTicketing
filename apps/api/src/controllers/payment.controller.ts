@@ -38,6 +38,7 @@ export class PaymentController {
       userId: input.userId,
       amountMinor: String(amountMinor),
       currency,
+      reservationKey: `${ticket.id}:${ticket.createdAt.toISOString()}`,
     });
     const binding = await db.ticket.updateMany({
       where: { id: ticket.id, status: 'LOCKED', userId: input.userId },

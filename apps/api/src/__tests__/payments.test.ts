@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { toMinorUnits } from '../payments';
+import { paymentIntentIdempotencyKey, toMinorUnits } from '../payments';
 
 describe('Stripe amount conversion', () => {
   it('converts decimal strings without floating point rounding', () => {
@@ -10,5 +10,20 @@ describe('Stripe amount conversion', () => {
 
   it('rejects fractions unsupported by the currency', () => {
     expect(() => toMinorUnits('12.345', 'usd')).toThrow();
+  });
+
+  it('scopes Stripe idempotency to the reservation generation', () => {
+    const first = paymentIntentIdempotencyKey({
+      eventId: 'event', seatId: 'seat', userId: 'user', reservationKey: 'ticket:old-generation',
+    });
+    const second = paymentIntentIdempotencyKey({
+      eventId: 'event', seatId: 'seat', userId: 'user', reservationKey: 'ticket:new-generation',
+    });
+
+    expect(first).not.toBe(second);
+  });
+
+  it('rejects payment metadata without a reservation generation', () => {
+    expect(() => paymentIntentIdempotencyKey({ eventId: 'event', seatId: 'seat', userId: 'user' })).toThrow(/generation/i);
   });
 });
