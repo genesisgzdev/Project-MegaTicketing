@@ -79,7 +79,7 @@ stateDiagram-v2
     available --> available: failed reservation releases nonce
 ~~~
 
-Después del commit, un publicador lee `OutboxEvent` con `publishedAt IS NULL`, hace `XADD` y marca el registro como publicado. Si el proceso muere después del `XADD` y antes del update, puede haber una entrega duplicada; el consumidor debe usar `outboxId` como clave idempotente.
+Después del commit, un publicador reclama hasta 50 filas `OutboxEvent` con `FOR UPDATE SKIP LOCKED` y una lease de 60 segundos antes de hacer `XADD`. Si el proceso muere antes de marcar la fila, otra réplica puede recuperar el claim vencido. Si muere después de `XADD` y antes del update, sigue siendo posible una entrega duplicada; el consumidor debe usar `outboxId` como clave idempotente.
 
 El consumidor no depende de posiciones fijas en el array de Redis: reconstruye el mapa de campos y extrae `payload`, con fallback para el formato antiguo. El retry de webhook usa un TTL de retención mayor que el retraso calculado y deja registrado `nextAttemptAt`; no considera que una key efímera sea una cola durable de negocio.
 

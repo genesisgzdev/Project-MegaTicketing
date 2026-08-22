@@ -16,6 +16,7 @@ All notable changes are documented here using Semantic Versioning.
 - Evita refunds falsos cuando Stripe entrega más de un evento para un ticket ya pagado.
 - Asocia el PaymentIntent, la moneda y el importe en unidades menores al ticket antes de aceptar el webhook.
 - Rechaza una solicitud de pago que intente reinterpretar el precio persistido en otra moneda.
+- Reclama filas outbox con `SKIP LOCKED` y lease recuperable para evitar publicaciones concurrentes entre réplicas.
 
 ## [2.1.1] — 2026-08-20
 

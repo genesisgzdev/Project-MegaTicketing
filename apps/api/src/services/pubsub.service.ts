@@ -1,6 +1,16 @@
 import { FastifyBaseLogger } from 'fastify';
 import redis from '../redis';
 import { db } from '../db';
+import { Prisma } from '@mega-ticketing/database';
+
+type ClaimedOutboxEvent = {
+  id: string;
+  type: string;
+  aggregateId: string;
+  payload: Prisma.JsonValue;
+};
+
+const OUTBOX_CLAIM_LEASE_MS = 60_000;
 
 export function decodeStreamPayload(fields: string[]): Record<string, unknown> {
   const values: Record<string, string> = {};
@@ -28,11 +38,25 @@ export class PubSubService {
 
   private async publishOutboxBatch() {
     try {
-      const events = await db.outboxEvent.findMany({
-        where: { publishedAt: null },
-        orderBy: { createdAt: 'asc' },
-        take: 50,
-      });
+      // Claim rows atomically so three API replicas cannot publish the same
+      // pending event at the same time. An expired claim is recoverable after
+      // a process dies between the database claim and Redis XADD.
+      const events = await db.$transaction(async (transaction) => transaction.$queryRaw<ClaimedOutboxEvent[]>`
+        WITH candidates AS (
+          SELECT "id"
+          FROM "OutboxEvent"
+          WHERE "publishedAt" IS NULL
+            AND ("publishingAt" IS NULL OR "publishingAt" < NOW() - INTERVAL '60 seconds')
+          ORDER BY "createdAt" ASC
+          LIMIT 50
+          FOR UPDATE SKIP LOCKED
+        )
+        UPDATE "OutboxEvent" AS event
+        SET "publishingAt" = NOW()
+        FROM candidates
+        WHERE event."id" = candidates."id"
+        RETURNING event."id", event."type", event."aggregateId", event."payload"
+      `);
 
       for (const event of events) {
         try {
@@ -44,11 +68,14 @@ export class PubSubService {
             'aggregateId', event.aggregateId,
             'payload', JSON.stringify(event.payload),
           );
-          await db.outboxEvent.update({ where: { id: event.id }, data: { publishedAt: new Date() } });
+          await db.outboxEvent.updateMany({
+            where: { id: event.id, publishedAt: null },
+            data: { publishedAt: new Date(), publishingAt: null },
+          });
         } catch (err: unknown) {
-          await db.outboxEvent.update({
-            where: { id: event.id },
-            data: { attempts: { increment: 1 }, lastError: String(err) },
+          await db.outboxEvent.updateMany({
+            where: { id: event.id, publishedAt: null },
+            data: { attempts: { increment: 1 }, lastError: String(err), publishingAt: null },
           }).catch(() => undefined);
           this.logger.error({ err, outboxId: event.id }, 'Outbox publication failed; event remains durable');
         }
