@@ -73,10 +73,11 @@ model OutboxEvent {
   payload     Json
   createdAt   DateTime  @default(now())
   publishedAt DateTime?
+  publishingAt DateTime?
   attempts    Int       @default(0)
   lastError   String?
 
-  @@index([publishedAt, createdAt])
+  @@index([publishedAt, publishingAt, createdAt])
 }
 
 enum TicketStatus {
