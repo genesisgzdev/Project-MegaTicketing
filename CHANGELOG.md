@@ -7,6 +7,7 @@ All notable changes are documented here using Semantic Versioning.
 ### Fixed
 
 - La idempotencia de PaymentIntents queda ligada a la generación concreta de la reserva. Al reciclar un ticket, una nueva reserva ya no puede reutilizar el PaymentIntent de una anterior.
+- Actualiza las acciones de checkout y Node a la generación que ejecuta sobre Node 24 y elimina la advertencia de Node 20 obsoleto en los gates.
 
 ## [2.1.4] — 2026-08-22
 
