@@ -33,6 +33,8 @@ POST /reserve
 
 Health, métricas, WebSocket operativo, idempotencia, reintentos del proveedor y reconciliación están descritos en el mapa técnico.
 
+En las operaciones que usan `Idempotency-Key`, la huella canoniza el body después de parsearlo y también queda ligada al bearer presentado. Una respuesta cacheada no cruza identidades ni reemplaza la autenticación de la ruta.
+
 Si Redis se reinicia PostgreSQL sigue evitando el doble ticket. Si la transacción falla el lock temporal se libera.
 
 ## Empezar en local
