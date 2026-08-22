@@ -85,7 +85,7 @@ El consumidor no depende de posiciones fijas en el array de Redis: reconstruye e
 
 PostgreSQL tiene `Ticket.seatId UNIQUE` y `Seat @@unique([eventId, seatNumber])`. Redis coordina la carrera, pero no es la autoridad del ticket. Stripe confirma el pago; no crea disponibilidad.
 
-La idempotencia HTTP se calcula en `preValidation`, cuando el body ya está parseado. La huella ordena las claves JSON y liga el resultado al bearer presentado; por eso el mismo `Idempotency-Key` con otro body o identidad devuelve conflicto y no salta la autenticación de la ruta.
+La idempotencia HTTP se calcula en `preValidation`, cuando el body ya está parseado. La huella ordena las claves JSON y liga el resultado al bearer presentado; por eso el mismo `Idempotency-Key` con otro body o identidad devuelve conflicto y no salta la autenticación de la ruta. La autenticación JWT exige `sub` y `exp`; en producción también exige issuer y audience.
 
 Un `payment_intent.succeeded` posterior a la expiración queda registrado como evento procesado, mantiene el ticket cancelado y solicita un refund con una clave idempotente. No existe una transición `CANCELLED -> PAID`.
 
