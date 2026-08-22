@@ -139,6 +139,26 @@ export class ReservationService {
     const event = await db.processedWebhookEvent.findUnique({ where: { id: eventIdempotencyKey } });
     return event !== null;
   }
+
+  async findPendingRefund(eventId: string, seatId: string, paymentIntentId: string): Promise<{ id: string } | null> {
+    return db.ticket.findFirst({
+      where: {
+        seatId,
+        paymentIntentId,
+        refundId: null,
+        status: 'CANCELLED',
+        seat: { eventId },
+      },
+      select: { id: true },
+    });
+  }
+
+  async markRefundCompleted(ticketId: string, refundId: string): Promise<void> {
+    await db.ticket.updateMany({
+      where: { id: ticketId, status: 'CANCELLED', refundId: null },
+      data: { refundId },
+    });
+  }
 }
 
 export class ReservationConflictError extends Error {}

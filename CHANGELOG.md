@@ -18,6 +18,7 @@ All notable changes are documented here using Semantic Versioning.
 - Rechaza una solicitud de pago que intente reinterpretar el precio persistido en otra moneda.
 - Reclama filas outbox con `SKIP LOCKED` y lease recuperable para evitar publicaciones concurrentes entre réplicas.
 - Rechaza webhooks de pago que llegan después del TTL persistido, cancela el ticket y libera el asiento antes de solicitar el refund.
+- Conserva el `refundId` y permite reintentar un refund pendiente después de una caída entre la cancelación y la respuesta de Stripe.
 
 ## [2.1.1] — 2026-08-20
 
