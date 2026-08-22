@@ -89,7 +89,7 @@ Un `payment_intent.succeeded` posterior a la expiración queda registrado como e
 
 La expiración se comprueba dentro de la misma transacción que procesa el webhook usando `Seat.lockedAt`; no depende de que otra reserva haya pasado antes por el asiento para limpiar el lock. El ticket conserva `refundId` después de un refund confirmado. Si el proceso cae entre `CANCELLED` y la llamada o confirmación del refund, una entrega posterior busca el ticket cancelado sin `refundId` y reintenta con una clave derivada del `PaymentIntent`, no del evento concreto.
 
-El precio persistido en `Seat` incluye su moneda. La API no permite que el cliente reinterprete un importe en otra moneda; el `PaymentIntent`, el importe en unidades menores y la moneda quedan asociados al ticket. La transición a `PAID` comprueba esa asociación cuando Stripe entrega el webhook.
+El precio persistido en `Seat` incluye su moneda. La API no permite que el cliente reinterprete un importe en otra moneda; el `PaymentIntent`, el importe en unidades menores y la moneda quedan asociados al ticket. La transición a `PAID` exige que el ID del webhook coincida con el `PaymentIntent` persistido y que importe y moneda también coincidan. Si el asiento se recicla mientras Stripe crea el intent, el update condicional no entrega un client secret para un ticket distinto y el intent sin asociación se cancela de forma best effort.
 
 Si Stripe entrega más de un tipo de evento para el mismo pago, un ticket que ya está `PAID` se considera repetición y no vuelve al camino de expiración ni solicita un refund.
 

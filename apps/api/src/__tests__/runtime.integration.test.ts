@@ -55,6 +55,15 @@ integration('PostgreSQL and Redis runtime gates', () => {
     expect(ticket?.status).toBe('LOCKED');
     expect(await db.outboxEvent.count({ where: { aggregateId: seatId, type: 'ticket.reserved' } })).toBe(1);
 
+    await expect(service.confirmReservation(eventId, seatId, `unbound-payment-${randomUUID()}`, {
+      id: 'pi_not_attached', amountMinor: 1000, currency: 'usd',
+    })).rejects.toThrow('PaymentIntent does not belong to the reservation');
+
+    await db.ticket.update({
+      where: { seatId },
+      data: { paymentIntentId: 'pi_integration', paymentAmountMinor: 1000, paymentCurrency: 'usd' },
+    });
+
     expect(await service.confirmReservation(eventId, seatId, `stripe-event-${randomUUID()}`, {
       id: 'pi_integration', amountMinor: 1000, currency: 'usd',
     })).toBe('paid');

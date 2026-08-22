@@ -2,7 +2,7 @@ import { FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { authenticateUser } from '../auth';
 import { db } from '../db';
-import { createPaymentIntent, toMinorUnits } from '../payments';
+import stripe, { createPaymentIntent, toMinorUnits } from '../payments';
 import { config } from '../config';
 
 const PaymentSchema = z.object({
@@ -39,10 +39,22 @@ export class PaymentController {
       amountMinor: String(amountMinor),
       currency,
     });
-    await db.ticket.updateMany({
+    const attached = await db.ticket.updateMany({
       where: { id: ticket.id, status: 'LOCKED', userId: input.userId },
       data: { paymentIntentId: paymentIntent.id, paymentAmountMinor: amountMinor, paymentCurrency: currency },
     });
+    if (attached.count !== 1) {
+      // The reservation changed while Stripe was creating the intent. Do not
+      // return a usable client secret for an intent that is no longer bound to
+      // this ticket. Cancellation is best effort because the provider may
+      // already have moved the intent to a non-cancellable state.
+      try {
+        await stripe.paymentIntents.cancel(paymentIntent.id);
+      } catch (error) {
+        request.log.error({ err: error, paymentIntentId: paymentIntent.id }, 'Failed to cancel an unbound PaymentIntent');
+      }
+      return reply.status(409).send({ status: 'error', message: 'Reservation changed before payment could be attached' });
+    }
     return reply.status(201).send({
       status: 'success',
       data: { paymentIntentId: paymentIntent.id, clientSecret: paymentIntent.client_secret },

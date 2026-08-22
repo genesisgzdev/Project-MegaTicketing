@@ -112,13 +112,16 @@ export class ReservationService {
       // for the same payment. A settled ticket is not an expired reservation.
       if (ticket.status === 'PAID') return 'duplicate';
       if (ticket.status !== 'LOCKED') return 'expired';
-      if (payment?.id && ticket.paymentIntentId && ticket.paymentIntentId !== payment.id) {
+      // A webhook must belong to the PaymentIntent attached to this exact
+      // ticket. Allowing a missing stored ID would let a late payment race a
+      // recycled seat and pay the next user's reservation.
+      if (payment?.id && ticket.paymentIntentId !== payment.id) {
         throw new Error('PaymentIntent does not belong to the reservation');
       }
-      if (payment?.amountMinor !== undefined && ticket.paymentAmountMinor !== null && ticket.paymentAmountMinor !== payment.amountMinor) {
+      if (payment?.amountMinor !== undefined && ticket.paymentAmountMinor !== payment.amountMinor) {
         throw new Error('Payment amount does not match the reservation');
       }
-      if (payment?.currency && ticket.paymentCurrency && ticket.paymentCurrency !== payment.currency.toLowerCase()) {
+      if (payment?.currency && ticket.paymentCurrency !== payment.currency.toLowerCase()) {
         throw new Error('Payment currency does not match the reservation');
       }
       const expiredBefore = new Date(Date.now() - config.SEAT_LOCK_TTL_MS);
