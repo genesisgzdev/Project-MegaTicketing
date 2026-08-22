@@ -83,9 +83,7 @@ server.register(async (app) => {
 
   // Real-time WebSocket endpoint
   app.get('/ws', { websocket: true }, (connection: { socket: import('ws').WebSocket }, request) => {
-    const adminToken = request.headers['x-admin-token'];
-    const canControlDefense = Boolean(config.WS_ADMIN_TOKEN && adminToken === config.WS_ADMIN_TOKEN);
-    securityController.handleConnection(connection, canControlDefense);
+    securityController.handleConnection(connection);
   });
 });
 

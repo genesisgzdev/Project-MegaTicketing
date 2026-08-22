@@ -67,6 +67,8 @@ No pongas claves de producción en el repositorio ni uses valores de ejemplo par
 
 En producción el JWT debe incluir `iss` y `aud`, y la configuración exige `JWT_ISSUER` y `JWT_AUDIENCE`. La API limita el algoritmo a `HS256`, exige `sub` y `exp`, comprueba el sujeto contra el usuario de la operación y deja que `jose` valide `exp` y `nbf`. En desarrollo y pruebas issuer y audience pueden omitirse.
 
+`/ws` solo transmite señales operativas de Redis Streams. Los comandos de activar o desactivar una defensa se rechazan porque no existe una política de runtime conectada a ese canal.
+
 `GET /events/:eventId/seats` devuelve el estado actual de cada asiento. La interfaz consume esa respuesta y no mantiene una copia fija de la disponibilidad.
 
 `POST /payments/intents` solo trabaja con una reserva `LOCKED` vigente del usuario.

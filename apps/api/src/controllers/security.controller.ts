@@ -12,7 +12,7 @@ export class SecurityController {
    * Handles incoming WebSocket connections for security monitoring and state sync.
    * Using SocketStream for connection.
    */
-  handleConnection(connection: { socket: import('ws').WebSocket }, canControlDefense = false) {
+  handleConnection(connection: { socket: import('ws').WebSocket }) {
     let subscriber: import('ioredis').Redis | null = null;
     let isClosed = false;
 
@@ -20,12 +20,14 @@ export class SecurityController {
       try {
         const data = JSON.parse(message.toString());
         
-        if (data.type === 'ACTIVATE_DEFENSE') {
-          if (canControlDefense) this.app.log.warn('Defense control is not wired to a runtime policy and was rejected');
-        }
-        
-        if (data.type === 'DEACTIVATE_DEFENSE') {
-          if (canControlDefense) this.app.log.warn('Defense control is not wired to a runtime policy and was rejected');
+        if (data.type === 'ACTIVATE_DEFENSE' || data.type === 'DEACTIVATE_DEFENSE') {
+          this.app.log.warn({ type: data.type }, 'Unsupported defense control rejected');
+          connection.socket.send(JSON.stringify({
+            type: 'ERROR',
+            code: 'UNSUPPORTED_CONTROL',
+            message: 'Defense control is not available on this stream',
+          }));
+          return;
         }
         
         if (data.type === 'SUBSCRIBE_STREAM') {
