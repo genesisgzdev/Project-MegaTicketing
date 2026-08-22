@@ -94,7 +94,7 @@ El resultado esperado es un solo `201`, ningún `5xx` y `invariant.safe: true`. 
 - `/health` comprueba PostgreSQL, Redis y memoria
 - `/health/ready` no informa readiness si una dependencia crítica está caída
 - `/metrics` expone métricas para Prometheus
-- `CORS_ORIGINS`, `OTEL_EXPORTER_OTLP_ENDPOINT`, `WS_ADMIN_TOKEN` y `VITE_API_URL` son configuración explícita
+- `CORS_ORIGINS`, `OTEL_EXPORTER_OTLP_ENDPOINT` y `VITE_API_URL` son configuración explícita
 - `npm run test:api:integration` ejecuta las pruebas de integración cuando hay servicios disponibles
 - `npm audit` y la revisión de seguridad deben formar parte del gate antes de publicar
 
