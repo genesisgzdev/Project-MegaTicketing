@@ -34,6 +34,7 @@ model Seat {
   event       Event     @relation(fields: [eventId], references: [id])
   seatNumber  String    // e.g., "A-12"
   price       Decimal
+  currency    String    @default("usd")
   isLocked    Boolean   @default(false)
   lockedAt    DateTime?
   ticket      Ticket?
@@ -51,6 +52,10 @@ model Ticket {
   seat      Seat         @relation(fields: [seatId], references: [id])
   status    TicketStatus @default(LOCKED)
   createdAt DateTime     @default(now())
+  paymentIntentId String? @unique
+  paymentAmountMinor Int?
+  paymentCurrency String?
+  paidAt DateTime?
 
   @@index([userId])
   @@index([status])

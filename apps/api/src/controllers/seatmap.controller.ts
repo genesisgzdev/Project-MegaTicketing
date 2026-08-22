@@ -23,6 +23,7 @@ export class SeatmapController {
         id: true,
         seatNumber: true,
         price: true,
+        currency: true,
         isLocked: true,
         lockedAt: true,
         ticket: { select: { status: true } },
@@ -36,6 +37,7 @@ export class SeatmapController {
         id: seat.id,
         seatNumber: seat.seatNumber,
         price: Number(seat.price),
+        currency: seat.currency,
         status: seat.ticket?.status === 'PAID'
           ? 'sold'
           : seat.isLocked && seat.lockedAt && seat.lockedAt.getTime() > lockExpiry

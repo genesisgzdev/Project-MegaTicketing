@@ -30,7 +30,9 @@ export class WebhookController {
     const acquired = await redis.set(idempotencyKey, 'processing', 'PX', 10000, 'NX');
     if (!acquired) {
       this.app.log.warn({ eventId: event.id }, 'Concurrent webhook request detected or already processed');
-      return reply.status(200).send({ received: true, status: 'duplicate_blocked' });
+      // A concurrent delivery may still be processing. A non-2xx response makes
+      // Stripe retry instead of acknowledging an event that was never committed.
+      return reply.status(409).send({ received: false, status: 'processing' });
     }
 
     try {
@@ -44,11 +46,19 @@ export class WebhookController {
           this.app.log.warn({ eventId: event.id }, 'Stripe event missing reservation metadata');
           return reply.status(400).send({ status: 'error', message: 'Payment metadata is incomplete' });
         }
-        const outcome = await this.service.confirmReservation(eventId, seatId, event.id);
+        const paymentIntentId = event.type === 'payment_intent.succeeded'
+          ? payment.id
+          : payment.payment_intent;
+        const amountMinor = event.type === 'payment_intent.succeeded'
+          ? payment.amount_received ?? payment.amount
+          : payment.amount_total;
+        const currency = typeof payment.currency === 'string' ? payment.currency.toLowerCase() : undefined;
+        const outcome = await this.service.confirmReservation(eventId, seatId, event.id, {
+          id: paymentIntentId,
+          amountMinor,
+          currency,
+        });
         if (outcome === 'expired') {
-          const paymentIntentId = event.type === 'payment_intent.succeeded'
-            ? payment.id
-            : payment.payment_intent;
           if (!paymentIntentId) throw new Error('Expired payment has no PaymentIntent id for refund');
           await stripe.refunds.create(
             { payment_intent: paymentIntentId },
