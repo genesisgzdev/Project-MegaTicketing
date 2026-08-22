@@ -6,6 +6,7 @@ import { setupIdempotency } from '../idempotency';
 import redis, { releaseSeat } from '../redis';
 import { db } from '../db';
 import { ReservationService } from '../services/reservation.service';
+import { config } from '../config';
 
 const integration = process.env.RUN_INTEGRATION === 'true' ? describe : describe.skip;
 
@@ -86,5 +87,19 @@ integration('PostgreSQL and Redis runtime gates', () => {
     expect(canonicalFirst.statusCode).toBe(200);
     expect(canonicalSecond.headers['idempotent-replayed']).toBe('true');
     await app.close();
+  });
+
+  it('cancels an expired lock instead of accepting a late payment webhook', async () => {
+    await db.seat.update({
+      where: { id: seatId },
+      data: { isLocked: true, lockedAt: new Date(Date.now() - config.SEAT_LOCK_TTL_MS - 1_000) },
+    });
+    await db.ticket.update({ where: { seatId }, data: { status: 'LOCKED', paidAt: null } });
+
+    expect(await service.confirmReservation(eventId, seatId, `late-payment-${randomUUID()}`, {
+      id: 'pi_integration', amountMinor: 1000, currency: 'usd',
+    })).toBe('expired');
+    expect((await db.ticket.findUnique({ where: { seatId } }))?.status).toBe('CANCELLED');
+    expect((await db.seat.findUnique({ where: { id: seatId } }))?.isLocked).toBe(false);
   });
 });

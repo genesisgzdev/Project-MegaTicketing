@@ -17,6 +17,7 @@ All notable changes are documented here using Semantic Versioning.
 - Asocia el PaymentIntent, la moneda y el importe en unidades menores al ticket antes de aceptar el webhook.
 - Rechaza una solicitud de pago que intente reinterpretar el precio persistido en otra moneda.
 - Reclama filas outbox con `SKIP LOCKED` y lease recuperable para evitar publicaciones concurrentes entre réplicas.
+- Rechaza webhooks de pago que llegan después del TTL persistido, cancela el ticket y libera el asiento antes de solicitar el refund.
 
 ## [2.1.1] — 2026-08-20
 
