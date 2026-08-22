@@ -10,7 +10,7 @@ All notable changes are documented here using Semantic Versioning.
 - Persiste reservas y eventos outbox en una misma transacción PostgreSQL.
 - Convierte importes a unidades menores sin redondeo binario antes de llamar a Stripe.
 - El fraude usa señales por actor; la presión total del evento queda como señal operativa.
-- Decodifica los mensajes del stream por nombre de campo y conserva los retries de webhook durante una ventana posterior al próximo intento.
+- Decodifica los mensajes del stream por nombre de campo y deja los retries de webhook bajo responsabilidad de Stripe, con idempotencia durable en PostgreSQL.
 - Nombra el lock de Redis como lease de una instancia; no lo presenta como Redlock multi-master.
 - Añade una imagen multi-stage de la API y alinea el entrypoint de producción con la ruta que genera TypeScript.
 - Evita refunds falsos cuando Stripe entrega más de un evento para un ticket ya pagado.

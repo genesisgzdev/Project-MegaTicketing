@@ -81,7 +81,7 @@ stateDiagram-v2
 
 Después del commit, un publicador reclama hasta 50 filas `OutboxEvent` con `FOR UPDATE SKIP LOCKED` y una lease de 60 segundos antes de hacer `XADD`. Si el proceso muere antes de marcar la fila, otra réplica puede recuperar el claim vencido. Si muere después de `XADD` y antes del update, sigue siendo posible una entrega duplicada; el consumidor debe usar `outboxId` como clave idempotente.
 
-El consumidor no depende de posiciones fijas en el array de Redis: reconstruye el mapa de campos y extrae `payload`, con fallback para el formato antiguo. El retry de webhook usa un TTL de retención mayor que el retraso calculado y deja registrado `nextAttemptAt`; no considera que una key efímera sea una cola durable de negocio.
+El consumidor no depende de posiciones fijas en el array de Redis: reconstruye el mapa de campos y extrae `payload`, con fallback para el formato antiguo. Los fallos del webhook devuelven un estado no exitoso para que Stripe reprograme la entrega; el evento queda registrado en PostgreSQL dentro de la transacción que aplica la transición de pago. Redis no actúa como cola durable de pagos.
 
 PostgreSQL tiene `Ticket.seatId UNIQUE` y `Seat @@unique([eventId, seatNumber])`. Redis coordina la carrera, pero no es la autoridad del ticket. Stripe confirma el pago; no crea disponibilidad.
 

@@ -16,7 +16,7 @@ En 30 segundos: React lee el inventario desde la API, Fastify valida identidad y
 
 Docker, Kubernetes, Terraform, Nginx y Cloudflare están configurados en el repositorio. La reserva escribe un evento outbox en la misma transacción que el ticket; `PubSubService` publica los outbox pendientes en Redis Streams y confirma cada uno después de publicarlo. El despliegue y las tareas posteriores de fulfillment requieren configuración externa. Ver [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) y [`docs/DEPLOYMENT_PREFLIGHT.md`](docs/DEPLOYMENT_PREFLIGHT.md).
 
-El consumidor convierte los pares de campos del stream a nombres (`outboxId`, `eventType`, `aggregateId`, `payload`) antes de procesarlos y mantiene compatibilidad con mensajes antiguos que solo tenían `payload`. Los retries de webhook conservan el registro más allá de su próximo intento para tolerar una lectura tardía; la cola de negocio sigue necesitando una política de retención y un operador real.
+El consumidor convierte los pares de campos del stream a nombres (`outboxId`, `eventType`, `aggregateId`, `payload`) antes de procesarlos y mantiene compatibilidad con mensajes antiguos que solo tenían `payload`. Los webhooks fallidos responden con error para que Stripe los reintente; PostgreSQL conserva el evento procesado con una clave única cuando la transacción termina correctamente.
 
 ## Flujo de una reserva
 
@@ -31,7 +31,7 @@ POST /reserve
   -> ticket PAID
 ```
 
-Health, métricas, WebSocket operativo, idempotencia, reintentos y reconciliación están descritos en el mapa técnico.
+Health, métricas, WebSocket operativo, idempotencia, reintentos del proveedor y reconciliación están descritos en el mapa técnico.
 
 Si Redis se reinicia PostgreSQL sigue evitando el doble ticket. Si la transacción falla el lock temporal se libera.
 
