@@ -81,6 +81,8 @@ stateDiagram-v2
 
 Después del commit, un publicador lee `OutboxEvent` con `publishedAt IS NULL`, hace `XADD` y marca el registro como publicado. Si el proceso muere después del `XADD` y antes del update, puede haber una entrega duplicada; el consumidor debe usar `outboxId` como clave idempotente.
 
+El consumidor no depende de posiciones fijas en el array de Redis: reconstruye el mapa de campos y extrae `payload`, con fallback para el formato antiguo. El retry de webhook usa un TTL de retención mayor que el retraso calculado y deja registrado `nextAttemptAt`; no considera que una key efímera sea una cola durable de negocio.
+
 PostgreSQL tiene `Ticket.seatId UNIQUE` y `Seat @@unique([eventId, seatNumber])`. Redis coordina la carrera, pero no es la autoridad del ticket. Stripe confirma el pago; no crea disponibilidad.
 
 Un `payment_intent.succeeded` posterior a la expiración queda registrado como evento procesado, mantiene el ticket cancelado y solicita un refund con una clave idempotente. No existe una transición `CANCELLED -> PAID`.
