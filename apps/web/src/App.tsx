@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from 'react';
-import { Zap, Activity, Shield, Globe, Database, Radio } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Zap, Activity, Shield, Globe, Database } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import CyberArena from './CyberArena';
@@ -10,8 +10,6 @@ function cn(...inputs: ClassValue[]) {
 
 export default function App() {
   const apiBase = import.meta.env.VITE_API_URL || 'http://localhost:3001';
-  const eventId = import.meta.env.VITE_EVENT_ID;
-  const [isConnected, setIsConnected] = useState(false);
   const [logs, setLogs] = useState<Array<{ message: string; at: number }>>([]);
   const [health, setHealth] = useState<{
     status: string;
@@ -45,28 +43,6 @@ export default function App() {
   const apiLatency = health?.checks?.database?.latency ?? 0;
   const memoryUsage = health?.checks?.memory?.percentage ?? 0;
 
-  const socketRef = useRef<WebSocket | null>(null);
-
-  useEffect(() => {
-    const socketUrl = apiBase.replace(/^http/, 'ws') + '/ws';
-    const socket = new WebSocket(socketUrl);
-    socketRef.current = socket;
-
-    socket.onopen = () => {
-      setIsConnected(true);
-      addLog('WebSocket connected');
-      if (eventId) socket.send(JSON.stringify({ type: 'SUBSCRIBE_STREAM', eventId, lastId: '0-0' }));
-    };
-    socket.onclose = () => setIsConnected(false);
-    socket.onmessage = (event) => {
-      let data: { type?: string; code?: string; message?: string; id?: string; eventId?: string };
-      try { data = JSON.parse(event.data); } catch { return; }
-      if (data.type === 'STREAM_EVENT') addLog(`STREAM ${data.eventId ?? eventId ?? 'unknown'} · ${data.id ?? 'event'}`);
-      if (data.type === 'ERROR') addLog(`WebSocket ${data.code ?? 'error'}: ${data.message ?? 'request rejected'}`);
-    };
-    return () => socket.close();
-  }, [apiBase, eventId]);
-
   return (
     <div className="min-h-screen bg-slate-950 p-8 font-sans selection:bg-indigo-500/30">
       <header className="mb-12 max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-start md:items-end border-b border-slate-800/50 pb-8 gap-6">
@@ -85,9 +61,6 @@ export default function App() {
           <div className="hidden lg:flex gap-6 items-center px-6 py-2 border border-white/5 rounded-2xl bg-white/[0.02]">
             <div className="flex items-center gap-2 text-slate-500 text-[10px] font-bold uppercase tracking-widest border-r border-white/10 pr-6">
               <Globe size={14} /> API: {apiBase}
-            </div>
-            <div className="flex items-center gap-2 text-slate-500 text-[10px] font-bold uppercase tracking-widest">
-              <Radio size={14} className={isConnected ? 'text-emerald-500' : 'text-slate-600'} /> Stream: {isConnected ? 'online' : 'offline'}
             </div>
           </div>
           
@@ -140,7 +113,7 @@ export default function App() {
           </div>
 
           <div className="bg-white/[0.02] p-8 rounded-[2rem] border border-white/5">
-            <h3 className="text-xs font-bold text-slate-500 mb-6 uppercase tracking-widest">Redis event stream</h3>
+            <h3 className="text-xs font-bold text-slate-500 mb-6 uppercase tracking-widest">Runtime messages</h3>
             <div className="space-y-4 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
               {logs.map((log, i) => (
                 <div key={i} className="flex flex-col gap-1 border-l-2 border-indigo-500/20 pl-4">

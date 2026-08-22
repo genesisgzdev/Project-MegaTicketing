@@ -11,7 +11,7 @@ En 30 segundos: React lee el inventario desde la API, Fastify valida identidad y
 - Redis para locks cortos, rate limiting, idempotencia HTTP y transporte operativo
 - PaymentIntents de Stripe y webhooks firmados
 - Frontend React/Vite con inventario de asientos leído desde la API
-- WebSocket para señales operativas y lectura de Redis Streams; el mapa de asientos se actualiza consultando la API
+- Panel web que consulta health e inventario mediante HTTP; el mapa de asientos se actualiza desde la API
 - Docker, Compose, Terraform y manifiestos de Kubernetes para los entornos de despliegue
 
 Docker, Kubernetes, Terraform, Nginx y Cloudflare están configurados en el repositorio. La reserva escribe un evento outbox en la misma transacción que el ticket; `PubSubService` publica los outbox pendientes en Redis Streams y confirma cada uno después de publicarlo. El webhook de Stripe solo puede marcar `PAID` cuando el `PaymentIntent`, importe y moneda ya están vinculados al ticket; una carrera durante esa vinculación se rechaza para que Stripe reintente. El despliegue y las tareas posteriores de fulfillment requieren configuración externa. Ver [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) y [`docs/DEPLOYMENT_PREFLIGHT.md`](docs/DEPLOYMENT_PREFLIGHT.md).
@@ -31,7 +31,7 @@ POST /reserve
   -> ticket PAID
 ```
 
-Health, métricas, WebSocket operativo, idempotencia, reintentos del proveedor y reconciliación están descritos en el mapa técnico.
+Health, métricas, idempotencia, reintentos del proveedor y reconciliación están descritos en el mapa técnico.
 
 En las operaciones que usan `Idempotency-Key`, la huella canoniza el body después de parsearlo y también queda ligada al bearer presentado. Una respuesta cacheada no cruza identidades ni reemplaza la autenticación de la ruta.
 
@@ -67,8 +67,6 @@ No pongas claves de producción en el repositorio ni uses valores de ejemplo par
 
 En producción el JWT debe incluir `iss` y `aud`, y la configuración exige `JWT_ISSUER` y `JWT_AUDIENCE`. La API limita el algoritmo a `HS256`, exige `sub` y `exp`, comprueba el sujeto contra el usuario de la operación y deja que `jose` valide `exp` y `nbf`. En desarrollo y pruebas issuer y audience pueden omitirse.
 
-`/ws` solo transmite señales operativas de Redis Streams. Los comandos de activar o desactivar una defensa se rechazan porque no existe una política de runtime conectada a ese canal.
-
 `GET /events/:eventId/seats` devuelve el estado actual de cada asiento. La interfaz consume esa respuesta y no mantiene una copia fija de la disponibilidad.
 
 `POST /payments/intents` solo trabaja con una reserva `LOCKED` vigente del usuario.
@@ -102,7 +100,7 @@ El resultado esperado es un solo `201`, ningún `5xx` y `invariant.safe: true`. 
 
 PostgreSQL es la fuente de verdad de asientos y tickets. Redis es coordinación temporal, rate limiting, idempotencia y stream. Stripe es una dependencia externa para pagos y su webhook firmado es la transición de pago. React no decide disponibilidad y los manifiestos no equivalen a un despliegue observado.
 
-El panel web solo muestra datos que recibe del runtime: health de la API, estado de la conexión WebSocket e IDs de eventos del stream cuando `VITE_EVENT_ID` está definido. No representa estado de WAF, Kubernetes, región ni detecciones de ataque porque esta aplicación no los expone.
+El panel web solo muestra datos que recibe del runtime: health de la API e inventario de asientos. No representa estado de WAF, Kubernetes, región, detecciones de ataque ni eventos de Redis porque esta aplicación no los expone.
 
 La arquitectura y las decisiones de seguridad están en [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) y [SECURITY.md](SECURITY.md).
 

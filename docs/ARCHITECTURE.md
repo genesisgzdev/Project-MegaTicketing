@@ -12,7 +12,6 @@ La primera figura ubica las dependencias. La segunda sigue una reserva que compi
 flowchart TB
     WEB[React seat map] -->|seat polling| HTTP[Fastify API]
     OPS[React operations] -->|health HTTP| HTTP
-    OPS -->|event stream WebSocket| HTTP
     CLIENT[client with JWT] -->|reserve request| HTTP
     HTTP --> CTX[request context and errors]
     HTTP --> RL[Redis rate limit]
@@ -30,7 +29,7 @@ flowchart TB
     HEALTH --> R
 ~~~
 
-El WebSocket `/ws` no es el canal del mapa de asientos: `CyberArena` hace polling. El panel de operaciones se suscribe al stream del evento solo cuando existe `VITE_EVENT_ID` y muestra los IDs que recibe. No presenta WAF, Kubernetes, región ni detecciones de ataque porque la API no expone esas señales. Los controles de defensa se rechazan explícitamente.
+`CyberArena` consulta el inventario por HTTP y vuelve a pedirlo cada cinco segundos. El panel no muestra WAF, Kubernetes, región, detecciones de ataque ni eventos operativos porque la API no expone esas señales.
 
 ## 2. Reserva bajo concurrencia
 
@@ -105,6 +104,6 @@ Los IDs de webhooks procesados también quedan en PostgreSQL con una clave únic
 - `/health` devuelve estado de database, Redis y heap; `/health/ready` exige query SQL y `PING` Redis.
 - `PubSubService` publica outbox pendientes, consume y recupera mensajes pendientes del stream `stream:orders:reserved`; hoy el consumidor registra y hace ACK, no es un procesador externo de fulfillment.
 - La presión del evento se registra como señal operativa. El bloqueo de fraude se calcula por actor y ventana, no por el total de compradores de un evento.
-- No existe un estado `defenseActive` en el runtime. `/ws` es un canal de lectura de streams y responde `UNSUPPORTED_CONTROL` a los comandos de activar o desactivar defensa.
+- No existe un estado `defenseActive` ni un canal WebSocket en el runtime. Los controles de defensa no forman parte de esta aplicación.
 - Docker, Kubernetes, Terraform, Nginx y Cloudflare son superficies de despliegue configuradas en el repo, no prueba de una cuenta cloud desplegada.
 - `npm run load:test` necesita API, PostgreSQL, Redis y UUIDs sembrados. El resultado válido es exactamente un `201`, cero `5xx` e invariant safe.
