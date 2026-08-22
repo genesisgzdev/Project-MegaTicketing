@@ -94,7 +94,16 @@ integration('PostgreSQL and Redis runtime gates', () => {
       where: { id: seatId },
       data: { isLocked: true, lockedAt: new Date(Date.now() - config.SEAT_LOCK_TTL_MS - 1_000) },
     });
-    await db.ticket.update({ where: { seatId }, data: { status: 'LOCKED', paidAt: null } });
+    await db.ticket.update({
+      where: { seatId },
+      data: {
+        status: 'LOCKED',
+        paidAt: null,
+        paymentIntentId: 'pi_integration',
+        paymentAmountMinor: 1000,
+        paymentCurrency: 'usd',
+      },
+    });
 
     expect(await service.confirmReservation(eventId, seatId, `late-payment-${randomUUID()}`, {
       id: 'pi_integration', amountMinor: 1000, currency: 'usd',
