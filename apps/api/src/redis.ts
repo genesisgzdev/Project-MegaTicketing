@@ -79,16 +79,4 @@ export const releaseSeat = async (eventId: string, seatId: string, lockToken: st
   return await redlock.unlock(`${eventId}:${seatId}`, lockToken);
 };
 
-export const markSeatAsPaid = async (eventId: string, seatId: string): Promise<void> => {
-  await redis.hset(`seat:${eventId}:${seatId}`, { status: 'PAID', paidAt: new Date().toISOString() });
-};
-
-export const markEventProcessed = async (eventId: string): Promise<void> => {
-  await redis.set(`event:processed:${eventId}`, '1', 'EX', 60 * 60 * 24 * 30);
-};
-
-export const isEventProcessed = async (eventId: string): Promise<boolean> => {
-  return (await redis.exists(`event:processed:${eventId}`)) === 1;
-};
-
 export default redis;

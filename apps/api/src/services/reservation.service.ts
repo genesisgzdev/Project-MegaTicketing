@@ -1,6 +1,7 @@
-import { lockSeat, releaseSeat, markSeatAsPaid, isEventProcessed, markEventProcessed } from '../redis';
+import { lockSeat, releaseSeat } from '../redis';
 import { db } from '../db';
 import { config } from '../config';
+import { Prisma } from '@mega-ticketing/database';
 
 /**
  * ReservationService: Encapsulates logic for seat availability and locking.
@@ -63,21 +64,29 @@ export class ReservationService {
    * Marks a reserved ticket as PAID after webhook confirmation.
    */
   async markAsPaid(eventId: string, seatId: string): Promise<void> {
-    await markSeatAsPaid(eventId, seatId);
+    await this.confirmReservation(eventId, seatId, `manual:${eventId}:${seatId}`);
   }
 
   async confirmReservation(eventId: string, seatId: string, eventIdempotencyKey: string): Promise<void> {
-    const updated = await db.ticket.updateMany({
-      where: { seatId, status: 'LOCKED', seat: { eventId } },
-      data: { status: 'PAID' },
+    await db.$transaction(async (transaction) => {
+      try {
+        await transaction.processedWebhookEvent.create({ data: { id: eventIdempotencyKey } });
+      } catch (error) {
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') return;
+        throw error;
+      }
+
+      const updated = await transaction.ticket.updateMany({
+        where: { seatId, status: 'LOCKED', seat: { eventId } },
+        data: { status: 'PAID' },
+      });
+      if (updated.count !== 1) throw new Error('No locked reservation found for payment confirmation');
     });
-    if (updated.count !== 1) throw new Error('No locked reservation found for payment confirmation');
-    await markSeatAsPaid(eventId, seatId);
-    await markEventProcessed(eventIdempotencyKey);
   }
 
   async isEventProcessed(eventIdempotencyKey: string): Promise<boolean> {
-    return isEventProcessed(eventIdempotencyKey);
+    const event = await db.processedWebhookEvent.findUnique({ where: { id: eventIdempotencyKey } });
+    return event !== null;
   }
 }
 

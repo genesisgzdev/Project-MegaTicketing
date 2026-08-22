@@ -77,6 +77,8 @@ stateDiagram-v2
 
 PostgreSQL tiene `Ticket.seatId UNIQUE` y `Seat @@unique([eventId, seatNumber])`. Redis coordina la carrera, pero no es la autoridad del ticket. Stripe confirma el pago; no crea disponibilidad.
 
+Los IDs de webhooks procesados también quedan en PostgreSQL con una clave única. Redis mantiene el lock breve de entrada; no guarda el único registro de un pago.
+
 ## 4. Operación y límites
 
 - `/health` devuelve estado de database, Redis y heap; `/health/ready` exige query SQL y `PING` Redis.

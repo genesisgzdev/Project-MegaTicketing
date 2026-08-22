@@ -1,9 +1,8 @@
 ﻿import { watch } from 'fs';
-import { exec } from 'child_process';
+import { execFile } from 'child_process';
 import { promisify } from 'util';
-import path from 'path';
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 /**
  * Executes a security health check using an external scanner.
@@ -16,7 +15,7 @@ export const getSystemHealth = async () => {
     const scannerPath = process.env.SECURITY_SCANNER_PATH || 'osv-scanner';
     
     // Avoid hardcoded local Windows paths
-    const { stdout } = await execAsync(`${scannerPath} scan source -r ${projectRoot} --format json`);
+    const { stdout } = await execFileAsync(scannerPath, ['scan', 'source', '-r', projectRoot, '--format', 'json']);
     const results = JSON.parse(stdout);
     
     return {
@@ -38,5 +37,4 @@ export const watchFiles = (onchange: (file: string) => void) => {
     }
   });
 };
-
 
