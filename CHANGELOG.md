@@ -2,6 +2,19 @@
 
 All notable changes are documented here using Semantic Versioning.
 
+## [2.1.4] — 2026-08-22
+
+### Changed
+
+- Hace que Terraform sea la única fuente Kubernetes del repositorio.
+- Exige una imagen API inmutable, referencias a secretos externos, probes de salud y un HPA versionado.
+- Retira manifiestos sueltos que apuntaban a otro namespace y a otro Deployment.
+
+### Riesgo y actualización
+
+- No se ejecuta ningún apply automáticamente.
+- Antes de aplicar hacen falta provider credentials, service account, Secret externo, backend con locking, aprobación de entorno y rollback probado.
+
 ## [2.1.3] — 2026-08-22
 
 ### Fixed
