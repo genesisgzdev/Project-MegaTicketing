@@ -55,6 +55,17 @@ integration('PostgreSQL and Redis runtime gates', () => {
     expect(ticket?.status).toBe('LOCKED');
     expect(await db.outboxEvent.count({ where: { aggregateId: seatId, type: 'ticket.reserved' } })).toBe(1);
 
+    // Stripe may win the race between PaymentIntent creation and the local
+    // binding update. A webhook must be retryable, never an implicit sale.
+    await expect(service.confirmReservation(eventId, seatId, `binding-race-${randomUUID()}`, {
+      id: 'pi_integration', amountMinor: 1000, currency: 'usd',
+    })).rejects.toThrow(/binding/i);
+    expect((await db.ticket.findUnique({ where: { seatId } }))?.status).toBe('LOCKED');
+    await db.ticket.update({
+      where: { seatId },
+      data: { paymentIntentId: 'pi_integration', paymentAmountMinor: 1000, paymentCurrency: 'usd' },
+    });
+
     expect(await service.confirmReservation(eventId, seatId, `stripe-event-${randomUUID()}`, {
       id: 'pi_integration', amountMinor: 1000, currency: 'usd',
     })).toBe('paid');

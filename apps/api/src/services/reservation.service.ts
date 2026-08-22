@@ -112,14 +112,19 @@ export class ReservationService {
       // for the same payment. A settled ticket is not an expired reservation.
       if (ticket.status === 'PAID') return 'duplicate';
       if (ticket.status !== 'LOCKED') return 'expired';
-      if (payment?.id && ticket.paymentIntentId && ticket.paymentIntentId !== payment.id) {
-        throw new Error('PaymentIntent does not belong to the reservation');
-      }
-      if (payment?.amountMinor !== undefined && ticket.paymentAmountMinor !== null && ticket.paymentAmountMinor !== payment.amountMinor) {
-        throw new Error('Payment amount does not match the reservation');
-      }
-      if (payment?.currency && ticket.paymentCurrency && ticket.paymentCurrency !== payment.currency.toLowerCase()) {
-        throw new Error('Payment currency does not match the reservation');
+      if (payment?.id) {
+        // Stripe can deliver the webhook immediately after creating the
+        // PaymentIntent, before the local binding UPDATE commits. Never let
+        // a NULL or partial binding turn that race into a paid ticket.
+        if (ticket.paymentIntentId !== payment.id || ticket.paymentAmountMinor === null || !ticket.paymentCurrency) {
+          throw new Error('PaymentIntent binding is missing or does not belong to the reservation');
+        }
+        if (payment.amountMinor !== undefined && ticket.paymentAmountMinor !== payment.amountMinor) {
+          throw new Error('Payment amount does not match the reservation');
+        }
+        if (payment.currency && ticket.paymentCurrency !== payment.currency.toLowerCase()) {
+          throw new Error('Payment currency does not match the reservation');
+        }
       }
       const expiredBefore = new Date(Date.now() - config.SEAT_LOCK_TTL_MS);
       if (!ticket.seat.lockedAt || ticket.seat.lockedAt <= expiredBefore) {
