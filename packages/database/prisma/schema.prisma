@@ -56,6 +56,11 @@ model Ticket {
   @@index([status])
 }
 
+model ProcessedWebhookEvent {
+  id          String   @id
+  processedAt DateTime @default(now())
+}
+
 enum TicketStatus {
   LOCKED
   PAID

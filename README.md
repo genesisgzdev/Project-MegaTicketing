@@ -63,6 +63,8 @@ No pongas claves de producción en el repositorio ni uses valores de ejemplo par
 
 `POST /webhook` comprueba la firma de Stripe y procesa los eventos de pago de forma idempotente. Si el procesamiento falla se permite el retry legítimo del proveedor.
 
+Los eventos de Stripe procesados se guardan en PostgreSQL. Redis se usa para el lock breve y la coordinación de la solicitud.
+
 ## Prueba que realmente importa
 
 Con un evento, un asiento y un usuario existentes en la base puedes lanzar la prueba contra servicios reales:

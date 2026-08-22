@@ -54,7 +54,12 @@ export function setupIdempotency(app: FastifyInstance, redis: Redis) {
 
   app.addHook('onSend', async (request, reply, payload) => {
     const { idempotencyCheckKey, idempotencyLockKey, idempotencyFingerprint } = request.context.metadata;
-    if (!idempotencyCheckKey || !idempotencyLockKey || reply.statusCode >= 500) {
+    if (!idempotencyCheckKey || !idempotencyLockKey) {
+      return payload;
+    }
+
+    if (reply.statusCode >= 500) {
+      await redis.del(idempotencyLockKey);
       return payload;
     }
 
