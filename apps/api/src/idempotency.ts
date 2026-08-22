@@ -23,6 +23,24 @@ export interface IdempotencyResult {
   cachedResponse?: any;
 }
 
+export function createIdempotencyFingerprint(
+  method: string,
+  url: string,
+  body: unknown,
+  authorization: string | undefined,
+): string {
+  return createHash('sha256')
+    .update(JSON.stringify({
+      method,
+      url,
+      // Keep a cached response inside the authentication boundary. The
+      // bearer is hashed with the request and is never stored separately.
+      authorization: authorization ?? '',
+      body: canonicalize(body ?? null),
+    }))
+    .digest('hex');
+}
+
 export function setupIdempotency(app: FastifyInstance, redis: Redis) {
   app.addHook('preValidation', async (request, reply) => {
     const idempotencyKey = request.headers['idempotency-key'] as string;
@@ -31,9 +49,12 @@ export function setupIdempotency(app: FastifyInstance, redis: Redis) {
       return;
     }
 
-    const fingerprint = createHash('sha256')
-      .update(JSON.stringify({ method: request.method, url: request.url, body: canonicalize(request.body ?? null) }))
-      .digest('hex');
+    const fingerprint = createIdempotencyFingerprint(
+      request.method,
+      request.url,
+      request.body,
+      request.headers.authorization,
+    );
     const key = `${IDEMPOTENCY_KEY_PREFIX}${createHash('sha256').update(idempotencyKey).digest('hex')}`;
     const lockKey = `${IDEMPOTENCY_LOCK_PREFIX}${createHash('sha256').update(idempotencyKey).digest('hex')}`;
 

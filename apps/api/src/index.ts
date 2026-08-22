@@ -1,13 +1,11 @@
 ﻿import './tracing';
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
-import websocket from '@fastify/websocket';
 import rateLimit from '@fastify/rate-limit';
 import metrics from 'fastify-metrics';
 import { config } from './config';
 import redis from './redis';
 import { ReservationController } from './controllers/reservation.controller';
-import { SecurityController } from './controllers/security.controller';
 import { WebhookController } from './controllers/webhook.controller';
 import { setupHealthCheck } from './health-check';
 import { db } from './db';
@@ -16,6 +14,7 @@ import { setupErrorHandler } from './error-handler';
 import { SeatmapController } from './controllers/seatmap.controller';
 import { PaymentController } from './controllers/payment.controller';
 import { setupIdempotency } from './idempotency';
+import { PubSubService } from './services/pubsub.service';
 
 /**
  * API Entrypoint.
@@ -32,7 +31,6 @@ setupIdempotency(server, redis);
 
 const allowedOrigins = config.CORS_ORIGINS.split(',').map((origin) => origin.trim()).filter(Boolean);
 server.register(cors, { origin: allowedOrigins });
-server.register(websocket);
 
 // Prometheus Instrumentation: Metrics exposure at /metrics
 server.register(metrics, { endpoint: '/metrics' });
@@ -71,7 +69,6 @@ server.addContentTypeParser('application/json', { parseAs: 'buffer' }, (req, bod
 server.register(async (app) => {
   const reservationController = new ReservationController(app);
   const webhookController = new WebhookController(app);
-  const securityController = new SecurityController(app);
   const seatmapController = new SeatmapController();
   const paymentController = new PaymentController();
 
@@ -81,15 +78,15 @@ server.register(async (app) => {
   app.post('/payments/intents', (req, rep) => paymentController.createIntent(req, rep));
   app.post('/webhook', (req, rep) => webhookController.handleStripeWebhook(req, rep));
 
-  // Real-time WebSocket endpoint
-  app.get('/ws', { websocket: true }, (connection: { socket: import('ws').WebSocket }, request) => {
-    const adminToken = request.headers['x-admin-token'];
-    const canControlDefense = Boolean(config.WS_ADMIN_TOKEN && adminToken === config.WS_ADMIN_TOKEN);
-    securityController.handleConnection(connection, canControlDefense);
-  });
 });
 
 setupHealthCheck(server, db, redis);
+
+// The outbox publisher is part of the API process lifecycle. Without an
+// instance here, reservations remain durable in PostgreSQL but never reach
+// the stream. Each replica claims rows with SKIP LOCKED, so starting one
+// publisher per API process is safe.
+new PubSubService(server.log);
 
 /**
  * Global Error Handler.

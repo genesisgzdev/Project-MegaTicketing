@@ -11,7 +11,7 @@ La primera figura ubica las dependencias. La segunda sigue una reserva que compi
 ~~~mermaid
 flowchart TB
     WEB[React seat map] -->|seat polling| HTTP[Fastify API]
-    OPS[React operations] -->|health metrics socket| HTTP
+    OPS[React operations] -->|health HTTP| HTTP
     CLIENT[client with JWT] -->|reserve request| HTTP
     HTTP --> CTX[request context and errors]
     HTTP --> RL[Redis rate limit]
@@ -29,7 +29,7 @@ flowchart TB
     HEALTH --> R
 ~~~
 
-El WebSocket `/ws` no es el canal del mapa de asientos: `CyberArena` hace polling. `/ws` consume streams operativos por evento y acepta controles de defensa solo con `x-admin-token` válido.
+`CyberArena` consulta el inventario por HTTP y vuelve a pedirlo cada cinco segundos. El panel no muestra WAF, Kubernetes, región, detecciones de ataque ni eventos operativos porque la API no expone esas señales.
 
 ## 2. Reserva bajo concurrencia
 
@@ -79,17 +79,23 @@ stateDiagram-v2
     available --> available: failed reservation releases nonce
 ~~~
 
-Después del commit, un publicador reclama hasta 50 filas `OutboxEvent` con `FOR UPDATE SKIP LOCKED` y una lease de 60 segundos antes de hacer `XADD`. Si el proceso muere antes de marcar la fila, otra réplica puede recuperar el claim vencido. Si muere después de `XADD` y antes del update, sigue siendo posible una entrega duplicada; el consumidor debe usar `outboxId` como clave idempotente.
+Después del commit, un publicador reclama hasta 50 filas `OutboxEvent` con `FOR UPDATE SKIP LOCKED` y una lease de 60 segundos antes de hacer `XADD`. Si el proceso muere antes de marcar la fila, otra réplica puede recuperar el claim vencido. Si muere después de `XADD` y antes del update, sigue siendo posible una entrega duplicada; el consumidor registra `outboxId` en `ProcessedOrderEvent` con una clave única antes del ACK para que esa republicación no vuelva a ejecutar el evento.
 
 El consumidor no depende de posiciones fijas en el array de Redis: reconstruye el mapa de campos y extrae `payload`, con fallback para el formato antiguo. Los fallos del webhook devuelven un estado no exitoso para que Stripe reprograme la entrega; el evento queda registrado en PostgreSQL dentro de la transacción que aplica la transición de pago. Redis no actúa como cola durable de pagos.
 
 PostgreSQL tiene `Ticket.seatId UNIQUE` y `Seat @@unique([eventId, seatNumber])`. Redis coordina la carrera, pero no es la autoridad del ticket. Stripe confirma el pago; no crea disponibilidad.
 
-Un `payment_intent.succeeded` posterior a la expiración queda registrado como evento procesado, mantiene el ticket cancelado y solicita un refund con una clave idempotente. No existe una transición `CANCELLED -> PAID`.
+La idempotencia HTTP se calcula en `preValidation`, cuando el body ya está parseado. La huella ordena las claves JSON y liga el resultado al bearer presentado; por eso el mismo `Idempotency-Key` con otro body o identidad devuelve conflicto y no salta la autenticación de la ruta. La autenticación JWT exige `sub` y `exp`; en producción también exige issuer y audience.
+
+Un `payment_intent.succeeded` posterior a la expiración queda registrado como evento procesado, mantiene el ticket cancelado y solicita un refund con una clave idempotente. Antes de cualquier transición a `PAID`, el webhook debe encontrar el `PaymentIntent`, importe y moneda ya vinculados al ticket; si la entrega llega durante la ventana entre Stripe y PostgreSQL, falla de forma retryable. No existe una transición `CANCELLED -> PAID`.
 
 La expiración se comprueba dentro de la misma transacción que procesa el webhook usando `Seat.lockedAt`; no depende de que otra reserva haya pasado antes por el asiento para limpiar el lock. El ticket conserva `refundId` después de un refund confirmado. Si el proceso cae entre `CANCELLED` y la llamada o confirmación del refund, una entrega posterior busca el ticket cancelado sin `refundId` y reintenta con una clave derivada del `PaymentIntent`, no del evento concreto.
 
 El precio persistido en `Seat` incluye su moneda. La API no permite que el cliente reinterprete un importe en otra moneda; el `PaymentIntent`, el importe en unidades menores y la moneda quedan asociados al ticket. La transición a `PAID` comprueba esa asociación cuando Stripe entrega el webhook.
+
+La idempotencia al crear un PaymentIntent también incluye la generación de la reserva (`Ticket.id` y `Ticket.createdAt`). Esto evita que el reciclaje de una fila después de una expiración reabra el PaymentIntent de una reserva anterior.
+
+Cuando un asiento expirado se recicla para otro usuario, la transacción limpia el `PaymentIntent`, importe, moneda, `paidAt` y `refundId` del ticket reutilizado. Un webhook tardío del comprador anterior encuentra un binding ausente y no puede convertir la nueva reserva en `PAID`.
 
 Si Stripe entrega más de un tipo de evento para el mismo pago, un ticket que ya está `PAID` se considera repetición y no vuelve al camino de expiración ni solicita un refund.
 
@@ -100,6 +106,6 @@ Los IDs de webhooks procesados también quedan en PostgreSQL con una clave únic
 - `/health` devuelve estado de database, Redis y heap; `/health/ready` exige query SQL y `PING` Redis.
 - `PubSubService` publica outbox pendientes, consume y recupera mensajes pendientes del stream `stream:orders:reserved`; hoy el consumidor registra y hace ACK, no es un procesador externo de fulfillment.
 - La presión del evento se registra como señal operativa. El bloqueo de fraude se calcula por actor y ventana, no por el total de compradores de un evento.
-- `defenseActive` ya no aparece como estado operativo: los mensajes WebSocket de activar o desactivar defensa se rechazan mientras no exista una política conectada al runtime.
+- No existe un estado `defenseActive` ni un canal WebSocket en el runtime. Los controles de defensa no forman parte de esta aplicación.
 - Docker, Kubernetes, Terraform, Nginx y Cloudflare son superficies de despliegue configuradas en el repo, no prueba de una cuenta cloud desplegada.
 - `npm run load:test` necesita API, PostgreSQL, Redis y UUIDs sembrados. El resultado válido es exactamente un `201`, cero `5xx` e invariant safe.

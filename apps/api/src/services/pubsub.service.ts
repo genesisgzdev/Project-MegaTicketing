@@ -25,6 +25,13 @@ export function decodeStreamPayload(fields: string[]): Record<string, unknown> {
   };
 }
 
+function decodeStreamEnvelope(fields: string[]): { outboxId?: string; payload: Record<string, unknown> } {
+  const values: Record<string, string> = {};
+  for (let index = 0; index + 1 < fields.length; index += 2) values[fields[index]] = fields[index + 1];
+  const payload = values.payload ? JSON.parse(values.payload) as Record<string, unknown> : {};
+  return { outboxId: values.outboxId, payload: { ...payload, eventType: values.eventType, aggregateId: values.aggregateId } };
+}
+
 export class PubSubService {
   private readonly streamName = 'stream:orders:reserved';
   private readonly groupName = 'order_processors';
@@ -107,6 +114,24 @@ export class PubSubService {
     this.logger.error('Redis stream consumer disabled after initialization retries');
   }
 
+  private async processMessage(messageId: string, fields: string[]) {
+    const envelope = decodeStreamEnvelope(fields);
+    if (!envelope.outboxId) {
+      this.logger.warn({ messageId }, 'Ignoring stream event without outboxId');
+      return;
+    }
+    try {
+      await db.processedOrderEvent.create({ data: { id: envelope.outboxId } });
+    } catch (err: unknown) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        this.logger.info({ messageId, outboxId: envelope.outboxId }, 'Skipping duplicate order event');
+        return;
+      }
+      throw err;
+    }
+    this.logger.info({ messageId, outboxId: envelope.outboxId, payload: envelope.payload }, 'Processing reserved order...');
+  }
+
   private async consumeLoop() {
     while (true) {
       try {
@@ -115,8 +140,7 @@ export class PubSubService {
           const messages = result[0][1];
           for (const message of messages) {
             const [messageId, fields] = message;
-            const payload = decodeStreamPayload(fields as string[]);
-            this.logger.info({ messageId, payload }, 'Processing reserved order...');
+            await this.processMessage(messageId, fields as string[]);
             await redis.xack(this.streamName, this.groupName, messageId);
           }
         }
@@ -137,8 +161,7 @@ export class PubSubService {
             this.logger.warn({ messageId, consumer, idleTime }, 'Claiming orphaned message');
             const claimed = await redis.xclaim(this.streamName, this.groupName, this.consumerName, 60000, messageId);
             if (claimed && claimed.length > 0) {
-              const payload = decodeStreamPayload(claimed[0][1] as string[]);
-              this.logger.info({ messageId, payload }, 'Processing recovered order...');
+              await this.processMessage(messageId, claimed[0][1] as string[]);
               await redis.xack(this.streamName, this.groupName, messageId);
             }
           }

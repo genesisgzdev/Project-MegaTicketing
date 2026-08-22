@@ -38,11 +38,27 @@ export class PaymentController {
       userId: input.userId,
       amountMinor: String(amountMinor),
       currency,
+      reservationKey: `${ticket.id}:${ticket.createdAt.toISOString()}`,
     });
-    await db.ticket.updateMany({
-      where: { id: ticket.id, status: 'LOCKED', userId: input.userId },
+    const binding = await db.ticket.updateMany({
+      // The ticket row is recycled when a lock expires. Keep the generation
+      // read before Stripe in the conditional update and never overwrite an
+      // already-bound intent. A late Stripe response then fails closed.
+      where: {
+        id: ticket.id,
+        status: 'LOCKED',
+        userId: input.userId,
+        createdAt: ticket.createdAt,
+        paymentIntentId: null,
+      },
       data: { paymentIntentId: paymentIntent.id, paymentAmountMinor: amountMinor, paymentCurrency: currency },
     });
+    if (binding.count !== 1) {
+      // Stripe may win a race with expiry or ticket recycling. Never return a
+      // client secret as if it were bound to a local reservation that changed
+      // before the conditional UPDATE committed.
+      return reply.status(409).send({ status: 'error', message: 'Reservation changed before payment binding completed' });
+    }
     return reply.status(201).send({
       status: 'success',
       data: { paymentIntentId: paymentIntent.id, clientSecret: paymentIntent.client_secret },
