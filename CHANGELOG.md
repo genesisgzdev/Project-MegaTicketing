@@ -10,6 +10,7 @@ All notable changes are documented here using Semantic Versioning.
 - Inicia `PubSubService` junto con la API para que el outbox transaccional tenga un publicador activo en cada réplica.
 - Retira la transición interna que podía marcar `PAID` sin importe, moneda ni PaymentIntent confirmado.
 - El binding local del PaymentIntent también exige la generación y que el ticket siga sin pago; una respuesta tardía no puede enlazarse con una reserva reciclada.
+- El consumidor de Redis Streams registra `outboxId` con una clave única antes del ACK; una republicación después de un crash no vuelve a ejecutar el evento de negocio.
 - Actualiza las acciones de checkout y Node a la generación que ejecuta sobre Node 24 y elimina la advertencia de Node 20 obsoleto en los gates.
 
 ## [2.1.4] — 2026-08-22

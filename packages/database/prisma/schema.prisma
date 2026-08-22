@@ -67,6 +67,11 @@ model ProcessedWebhookEvent {
   processedAt DateTime @default(now())
 }
 
+model ProcessedOrderEvent {
+  id          String   @id
+  processedAt DateTime @default(now())
+}
+
 model OutboxEvent {
   id          String    @id @default(uuid())
   type        String
