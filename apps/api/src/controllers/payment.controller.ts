@@ -39,10 +39,16 @@ export class PaymentController {
       amountMinor: String(amountMinor),
       currency,
     });
-    await db.ticket.updateMany({
+    const binding = await db.ticket.updateMany({
       where: { id: ticket.id, status: 'LOCKED', userId: input.userId },
       data: { paymentIntentId: paymentIntent.id, paymentAmountMinor: amountMinor, paymentCurrency: currency },
     });
+    if (binding.count !== 1) {
+      // Stripe may win a race with expiry or ticket recycling. Never return a
+      // client secret as if it were bound to a local reservation that changed
+      // before the conditional UPDATE committed.
+      return reply.status(409).send({ status: 'error', message: 'Reservation changed before payment binding completed' });
+    }
     return reply.status(201).send({
       status: 'success',
       data: { paymentIntentId: paymentIntent.id, clientSecret: paymentIntent.client_secret },

@@ -73,7 +73,7 @@ En producción el JWT debe incluir `iss` y `aud`, y la configuración exige `JWT
 
 `POST /payments/intents` solo trabaja con una reserva `LOCKED` vigente del usuario.
 
-Si la reserva deja de pertenecer al usuario mientras Stripe crea el `PaymentIntent`, la vinculación local no se acepta como éxito; el flujo debe quedar en revisión/reintento y nunca reutiliza los datos de pago de una reserva anterior.
+Si la reserva deja de pertenecer al usuario mientras Stripe crea el `PaymentIntent`, la vinculación condicional afecta cero filas y la API responde `409`; nunca devuelve un secreto como si el pago estuviera asociado ni reutiliza los datos de pago de una reserva anterior.
 
 `POST /webhook` comprueba la firma de Stripe y procesa los eventos de pago de forma idempotente. Si el procesamiento falla se permite el retry legítimo del proveedor.
 

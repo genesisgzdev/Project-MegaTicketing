@@ -56,6 +56,7 @@ All notable changes are documented here using Semantic Versioning.
 - El canal WebSocket rechaza controles de defensa no conectados y ya no expone una configuración administrativa sin runtime detrás.
 - Exige `JWT_ISSUER` y `JWT_AUDIENCE` cuando la API arranca en producción; la firma sigue limitada a `HS256` y la identidad se toma del `sub` validado.
 - Limpia toda la vinculación de pago al reciclar un ticket expirado para otro usuario; un webhook tardío del PaymentIntent anterior ya no puede pagar la reserva nueva.
+- El endpoint de PaymentIntent devuelve `409` si la vinculación condicional del pago pierde una carrera antes de confirmar la reserva; ya no responde `201` con un secreto sin asociación local.
 
 ## [2.1.1] — 2026-08-20
 
