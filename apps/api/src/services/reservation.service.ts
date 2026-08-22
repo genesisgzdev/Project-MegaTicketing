@@ -51,6 +51,14 @@ export class ReservationService {
         } else {
           await transaction.ticket.create({ data: { userId, seatId, status: 'LOCKED' } });
         }
+
+        await transaction.outboxEvent.create({
+          data: {
+            type: 'ticket.reserved',
+            aggregateId: seatId,
+            payload: { eventId, seatId, userId },
+          },
+        });
       });
       return lockToken;
     } catch (error) {

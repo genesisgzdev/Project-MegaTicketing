@@ -1,5 +1,6 @@
 import { FastifyBaseLogger } from 'fastify';
 import redis from '../redis';
+import { db } from '../db';
 
 export class PubSubService {
   private readonly streamName = 'stream:orders:reserved';
@@ -8,6 +9,40 @@ export class PubSubService {
 
   constructor(private logger: FastifyBaseLogger) {
     void this.initConsumerGroup();
+    const publisher = setInterval(() => void this.publishOutboxBatch(), 1000);
+    publisher.unref();
+  }
+
+  private async publishOutboxBatch() {
+    try {
+      const events = await db.outboxEvent.findMany({
+        where: { publishedAt: null },
+        orderBy: { createdAt: 'asc' },
+        take: 50,
+      });
+
+      for (const event of events) {
+        try {
+          await redis.xadd(
+            this.streamName,
+            '*',
+            'outboxId', event.id,
+            'eventType', event.type,
+            'aggregateId', event.aggregateId,
+            'payload', JSON.stringify(event.payload),
+          );
+          await db.outboxEvent.update({ where: { id: event.id }, data: { publishedAt: new Date() } });
+        } catch (err: unknown) {
+          await db.outboxEvent.update({
+            where: { id: event.id },
+            data: { attempts: { increment: 1 }, lastError: String(err) },
+          }).catch(() => undefined);
+          this.logger.error({ err, outboxId: event.id }, 'Outbox publication failed; event remains durable');
+        }
+      }
+    } catch (err: unknown) {
+      this.logger.error({ err }, 'Outbox scan failed; durable events will be retried');
+    }
   }
 
   private async initConsumerGroup() {

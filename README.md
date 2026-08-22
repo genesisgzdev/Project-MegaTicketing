@@ -8,13 +8,13 @@ En 30 segundos: React lee el inventario desde la API, Fastify valida identidad y
 
 - API con Fastify y TypeScript
 - PostgreSQL con Prisma como fuente de verdad para eventos, asientos y tickets
-- Redis para locks cortos, rate limiting, eventos e idempotencia
+- Redis para locks cortos, rate limiting, idempotencia HTTP y transporte operativo
 - PaymentIntents de Stripe y webhooks firmados
 - Frontend React/Vite con inventario de asientos leído desde la API
 - WebSocket para señales operativas y lectura de Redis Streams; el mapa de asientos se actualiza consultando la API
 - Docker, Compose, Terraform y manifiestos de Kubernetes para los entornos de despliegue
 
-Docker, Kubernetes, Terraform, Nginx y Cloudflare están configurados en el repositorio. `PubSubService` registra y confirma los mensajes de Redis Streams. El despliegue y las tareas posteriores de fulfillment requieren configuración externa. Ver [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) y [`docs/DEPLOYMENT_PREFLIGHT.md`](docs/DEPLOYMENT_PREFLIGHT.md).
+Docker, Kubernetes, Terraform, Nginx y Cloudflare están configurados en el repositorio. La reserva escribe un evento outbox en la misma transacción que el ticket; `PubSubService` publica los outbox pendientes en Redis Streams y confirma cada uno después de publicarlo. El despliegue y las tareas posteriores de fulfillment requieren configuración externa. Ver [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) y [`docs/DEPLOYMENT_PREFLIGHT.md`](docs/DEPLOYMENT_PREFLIGHT.md).
 
 ## Flujo de una reserva
 
@@ -23,6 +23,8 @@ POST /reserve
   -> lock temporal en Redis
   -> UPDATE condicional del asiento en PostgreSQL
   -> ticket LOCKED
+  -> evento outbox en PostgreSQL, dentro de la misma transacción
+  -> publicador reintentable hacia Redis Streams
   -> PaymentIntent y webhook firmado de Stripe
   -> ticket PAID
 ```
@@ -63,7 +65,9 @@ No pongas claves de producción en el repositorio ni uses valores de ejemplo par
 
 `POST /webhook` comprueba la firma de Stripe y procesa los eventos de pago de forma idempotente. Si el procesamiento falla se permite el retry legítimo del proveedor.
 
-Los eventos de Stripe procesados se guardan en PostgreSQL. Redis se usa para el lock breve y la coordinación de la solicitud.
+Los eventos de Stripe procesados se guardan en PostgreSQL. Los eventos de reserva pendientes también quedan en PostgreSQL hasta que el publicador los entrega a Redis Streams. Redis coordina la carrera corta y transporta eventos; no decide la venta.
+
+Los importes se convierten a unidades menores según la moneda antes de llamar a Stripe. El precio se toma de PostgreSQL, no del frontend.
 
 ## Prueba que realmente importa
 

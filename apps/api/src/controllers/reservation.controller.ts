@@ -1,6 +1,5 @@
 ﻿import { FastifyRequest, FastifyReply, FastifyInstance } from 'fastify';
 import { ReservationService } from '../services/reservation.service';
-import { PubSubService } from '../services/pubsub.service';
 import { FraudService } from '../services/fraud.service';
 import { z } from 'zod';
 import { authenticateUser } from '../auth';
@@ -17,12 +16,10 @@ const ReserveSchema = z.object({
  */
 export class ReservationController {
   private service: ReservationService;
-  private pubsubService: PubSubService;
   private fraudService: FraudService;
 
   constructor(private app: FastifyInstance) {
     this.service = new ReservationService();
-    this.pubsubService = new PubSubService(app.log);
     this.fraudService = new FraudService();
   }
 
@@ -39,7 +36,7 @@ export class ReservationController {
       }
       
       // 1. Fraud Detection (Velocity & Pattern Matching)
-      const isFraudulent = await this.fraudService.detectFraud(request.ip, body.eventId);
+      const isFraudulent = await this.fraudService.detectFraud(request.ip, body.eventId, body.userId);
       
       if (isFraudulent) {
         this.app.log.warn({ ip: request.ip, ...body }, 'Security Alert: Suspicious reservation pattern detected');
@@ -54,15 +51,6 @@ export class ReservationController {
       
       if (lockToken) {
         this.app.log.info({ ...body }, 'Seat lock acquired successfully');
-
-        // 3. Stream event to Pub/Sub for asynchronous order processing (fulfillment, payment, etc.)
-        // We await this to ensure we log any immediate SDK failures, 
-        // though the service itself handles errors internally.
-        await this.pubsubService.publishOrderReserved({
-          eventId: body.eventId,
-          seatId: body.seatId,
-          userId: body.userId
-        });
 
         return reply.status(201).send({ 
           status: 'success', 

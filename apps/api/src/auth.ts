@@ -11,8 +11,9 @@ export async function authenticateUser(request: FastifyRequest, userId: string):
     const { payload } = await jwtVerify(
       authorization.slice('Bearer '.length),
       new TextEncoder().encode(config.JWT_SECRET),
+      { algorithms: ['HS256'] },
     );
-    return payload.sub === userId;
+    return typeof payload.sub === 'string' && payload.sub === userId;
   } catch {
     return false;
   }

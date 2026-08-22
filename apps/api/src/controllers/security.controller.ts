@@ -6,7 +6,7 @@ import redis from '../redis';
  * It also handles real-time WebSocket state reconciliation by consuming Redis Streams via XREAD BLOCK.
  */
 export class SecurityController {
-  constructor(private app: FastifyInstance, private onDefenseToggle: (status: boolean) => void) {}
+  constructor(private app: FastifyInstance) {}
 
   /**
    * Handles incoming WebSocket connections for security monitoring and state sync.
@@ -21,15 +21,11 @@ export class SecurityController {
         const data = JSON.parse(message.toString());
         
         if (data.type === 'ACTIVATE_DEFENSE') {
-          if (!canControlDefense) return;
-          this.onDefenseToggle(true);
-          this.app.log.info('Security shield engaged');
+          if (canControlDefense) this.app.log.warn('Defense control is not wired to a runtime policy and was rejected');
         }
         
         if (data.type === 'DEACTIVATE_DEFENSE') {
-          if (!canControlDefense) return;
-          this.onDefenseToggle(false);
-          this.app.log.info('Security shield disengaged');
+          if (canControlDefense) this.app.log.warn('Defense control is not wired to a runtime policy and was rejected');
         }
         
         if (data.type === 'SUBSCRIBE_STREAM') {

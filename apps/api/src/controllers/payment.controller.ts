@@ -27,7 +27,7 @@ export class PaymentController {
       return reply.status(409).send({ status: 'error', message: 'Reservation is missing or expired' });
     }
 
-    const paymentIntent = await createPaymentIntent(Number(ticket.seat.price), input.currency.toLowerCase(), {
+    const paymentIntent = await createPaymentIntent(ticket.seat.price.toString(), input.currency.toLowerCase(), {
       eventId: input.eventId,
       seatId: input.seatId,
       userId: input.userId,

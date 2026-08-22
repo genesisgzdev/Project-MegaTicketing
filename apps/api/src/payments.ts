@@ -6,13 +6,29 @@ const stripe = new Stripe(config.STRIPE_SECRET_KEY, {
   apiVersion: '2026-03-25.dahlia',
 });
 
-export const createPaymentIntent = async (amount: number, currency: string = 'usd', metadata: Record<string, string>) => {
+const ZERO_DECIMAL_CURRENCIES = new Set(['bif', 'clp', 'djf', 'gnf', 'jpy', 'kmf', 'krw', 'mga', 'pyg', 'rwf', 'ugx', 'vnd', 'vuv', 'xaf', 'xof', 'xpf']);
+const THREE_DECIMAL_CURRENCIES = new Set(['bhd', 'jod', 'kwd', 'omr', 'tnd']);
+
+export function toMinorUnits(amount: string | number, currency: string): number {
+  const exponent = ZERO_DECIMAL_CURRENCIES.has(currency) ? 0 : THREE_DECIMAL_CURRENCIES.has(currency) ? 3 : 2;
+  const text = String(amount).trim();
+  if (!/^\d+(?:\.\d+)?$/.test(text)) throw new Error('Amount must be a non-negative decimal');
+  const [whole, fraction = ''] = text.split('.');
+  if (fraction.length > exponent && /[1-9]/.test(fraction.slice(exponent))) {
+    throw new Error(`Amount has more fractional units than ${currency} supports`);
+  }
+  const minor = BigInt(whole) * (10n ** BigInt(exponent)) + BigInt((fraction + '0'.repeat(exponent)).slice(0, exponent) || '0');
+  if (minor > BigInt(Number.MAX_SAFE_INTEGER)) throw new Error('Amount exceeds Stripe safe integer range');
+  return Number(minor);
+}
+
+export const createPaymentIntent = async (amount: string | number, currency: string = 'usd', metadata: Record<string, string>) => {
   try {
     // Generate an idempotency key from seat and event
     const idempotencyKey = `pay_${metadata.eventId}_${metadata.seatId}_${metadata.userId}`;
 
     const paymentIntent = await stripe.paymentIntents.create({
-      amount: Math.round(amount * 100), // Ensure integer for cents
+      amount: toMinorUnits(amount, currency),
       currency,
       metadata,
       automatic_payment_methods: {
@@ -30,4 +46,3 @@ export const createPaymentIntent = async (amount: number, currency: string = 'us
 };
 
 export default stripe;
-
