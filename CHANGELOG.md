@@ -13,6 +13,9 @@ All notable changes are documented here using Semantic Versioning.
 - Decodifica los mensajes del stream por nombre de campo y conserva los retries de webhook durante una ventana posterior al próximo intento.
 - Nombra el lock de Redis como lease de una instancia; no lo presenta como Redlock multi-master.
 - Añade una imagen multi-stage de la API y alinea el entrypoint de producción con la ruta que genera TypeScript.
+- Evita refunds falsos cuando Stripe entrega más de un evento para un ticket ya pagado.
+- Asocia el PaymentIntent, la moneda y el importe en unidades menores al ticket antes de aceptar el webhook.
+- Rechaza una solicitud de pago que intente reinterpretar el precio persistido en otra moneda.
 
 ## [2.1.1] — 2026-08-20
 

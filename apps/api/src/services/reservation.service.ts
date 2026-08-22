@@ -75,7 +75,12 @@ export class ReservationService {
     await this.confirmReservation(eventId, seatId, `manual:${eventId}:${seatId}`);
   }
 
-  async confirmReservation(eventId: string, seatId: string, eventIdempotencyKey: string): Promise<'paid' | 'duplicate' | 'expired'> {
+  async confirmReservation(
+    eventId: string,
+    seatId: string,
+    eventIdempotencyKey: string,
+    payment?: { id?: string; amountMinor?: number; currency?: string },
+  ): Promise<'paid' | 'duplicate' | 'expired'> {
     return db.$transaction(async (transaction) => {
       let outcome: 'paid' | 'duplicate' | 'expired' = 'paid';
       try {
@@ -85,11 +90,28 @@ export class ReservationService {
         throw error;
       }
 
-      const updated = await transaction.ticket.updateMany({
-        where: { seatId, status: 'LOCKED', seat: { eventId } },
-        data: { status: 'PAID' },
+      const ticket = await transaction.ticket.findFirst({
+        where: { seatId, seat: { eventId } },
+        select: { id: true, status: true, paymentIntentId: true, paymentAmountMinor: true, paymentCurrency: true },
       });
-      if (updated.count !== 1) outcome = 'expired';
+      if (!ticket) return 'expired';
+      // Stripe may deliver checkout.session.completed and payment_intent.succeeded
+      // for the same payment. A settled ticket is not an expired reservation.
+      if (ticket.status === 'PAID') return 'duplicate';
+      if (ticket.status !== 'LOCKED') return 'expired';
+      if (payment?.id && ticket.paymentIntentId && ticket.paymentIntentId !== payment.id) {
+        throw new Error('PaymentIntent does not belong to the reservation');
+      }
+      if (payment?.amountMinor !== undefined && ticket.paymentAmountMinor !== null && ticket.paymentAmountMinor !== payment.amountMinor) {
+        throw new Error('Payment amount does not match the reservation');
+      }
+      if (payment?.currency && ticket.paymentCurrency && ticket.paymentCurrency !== payment.currency.toLowerCase()) {
+        throw new Error('Payment currency does not match the reservation');
+      }
+      await transaction.ticket.update({
+        where: { id: ticket.id },
+        data: { status: 'PAID', paidAt: new Date() },
+      });
       return outcome;
     });
   }

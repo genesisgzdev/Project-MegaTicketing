@@ -11,7 +11,11 @@ export async function authenticateUser(request: FastifyRequest, userId: string):
     const { payload } = await jwtVerify(
       authorization.slice('Bearer '.length),
       new TextEncoder().encode(config.JWT_SECRET),
-      { algorithms: ['HS256'] },
+      {
+        algorithms: ['HS256'],
+        ...(config.JWT_ISSUER ? { issuer: config.JWT_ISSUER } : {}),
+        ...(config.JWT_AUDIENCE ? { audience: config.JWT_AUDIENCE } : {}),
+      },
     );
     return typeof payload.sub === 'string' && payload.sub === userId;
   } catch {

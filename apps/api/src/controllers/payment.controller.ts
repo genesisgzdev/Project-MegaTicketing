@@ -2,7 +2,7 @@ import { FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { authenticateUser } from '../auth';
 import { db } from '../db';
-import { createPaymentIntent } from '../payments';
+import { createPaymentIntent, toMinorUnits } from '../payments';
 import { config } from '../config';
 
 const PaymentSchema = z.object({
@@ -21,16 +21,27 @@ export class PaymentController {
 
     const ticket = await db.ticket.findFirst({
       where: { seatId: input.seatId, userId: input.userId, status: 'LOCKED', seat: { eventId: input.eventId } },
-      include: { seat: { select: { price: true, lockedAt: true } } },
+      include: { seat: { select: { price: true, currency: true, lockedAt: true } } },
     });
     if (!ticket || !ticket.seat.lockedAt || ticket.seat.lockedAt.getTime() <= Date.now() - config.SEAT_LOCK_TTL_MS) {
       return reply.status(409).send({ status: 'error', message: 'Reservation is missing or expired' });
     }
 
-    const paymentIntent = await createPaymentIntent(ticket.seat.price.toString(), input.currency.toLowerCase(), {
+    const currency = input.currency.toLowerCase();
+    if (currency !== ticket.seat.currency.toLowerCase()) {
+      return reply.status(400).send({ status: 'error', message: 'The requested currency does not match the seat price currency' });
+    }
+    const amountMinor = toMinorUnits(ticket.seat.price.toString(), currency);
+    const paymentIntent = await createPaymentIntent(ticket.seat.price.toString(), currency, {
       eventId: input.eventId,
       seatId: input.seatId,
       userId: input.userId,
+      amountMinor: String(amountMinor),
+      currency,
+    });
+    await db.ticket.updateMany({
+      where: { id: ticket.id, status: 'LOCKED', userId: input.userId },
+      data: { paymentIntentId: paymentIntent.id, paymentAmountMinor: amountMinor, paymentCurrency: currency },
     });
     return reply.status(201).send({
       status: 'success',

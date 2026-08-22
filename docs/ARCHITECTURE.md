@@ -87,6 +87,10 @@ PostgreSQL tiene `Ticket.seatId UNIQUE` y `Seat @@unique([eventId, seatNumber])`
 
 Un `payment_intent.succeeded` posterior a la expiración queda registrado como evento procesado, mantiene el ticket cancelado y solicita un refund con una clave idempotente. No existe una transición `CANCELLED -> PAID`.
 
+El precio persistido en `Seat` incluye su moneda. La API no permite que el cliente reinterprete un importe en otra moneda; el `PaymentIntent`, el importe en unidades menores y la moneda quedan asociados al ticket. La transición a `PAID` comprueba esa asociación cuando Stripe entrega el webhook.
+
+Si Stripe entrega más de un tipo de evento para el mismo pago, un ticket que ya está `PAID` se considera repetición y no vuelve al camino de expiración ni solicita un refund.
+
 Los IDs de webhooks procesados también quedan en PostgreSQL con una clave única. Redis mantiene el lock breve de entrada; no guarda el único registro de un pago.
 
 ## 4. Operación y límites

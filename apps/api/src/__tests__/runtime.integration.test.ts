@@ -50,6 +50,15 @@ integration('PostgreSQL and Redis runtime gates', () => {
     const ticket = await db.ticket.findUnique({ where: { seatId } });
     expect(ticket?.status).toBe('LOCKED');
     expect(await db.outboxEvent.count({ where: { aggregateId: seatId, type: 'ticket.reserved' } })).toBe(1);
+
+    expect(await service.confirmReservation(eventId, seatId, `stripe-event-${randomUUID()}`, {
+      id: 'pi_integration', amountMinor: 1000, currency: 'usd',
+    })).toBe('paid');
+    // A second Stripe event for the same payment must not enter the expiry/refund path.
+    expect(await service.confirmReservation(eventId, seatId, `stripe-event-${randomUUID()}`, {
+      id: 'pi_integration', amountMinor: 1000, currency: 'usd',
+    })).toBe('duplicate');
+    expect((await db.ticket.findUnique({ where: { seatId } }))?.status).toBe('PAID');
   });
 
   it('replays an idempotent response and does not execute the handler twice', async () => {

@@ -2,7 +2,7 @@
 
 Plataforma de entradas para escenarios de alta concurrencia. La propiedad que define el sistema es verificable: para un asiento y evento, como máximo una solicitud consigue la reserva persistida; las demás reciben conflicto y no crean un ticket duplicado.
 
-En 30 segundos: React lee el inventario desde la API, Fastify valida identidad y reserva, Redis coordina la carrera corta y PostgreSQL decide la reserva definitiva. Stripe mueve el ticket de `LOCKED` a `PAID` mediante webhook firmado. Si Redis cae, PostgreSQL sigue siendo la autoridad.
+En 30 segundos: React lee el inventario desde la API, Fastify valida identidad y reserva, Redis coordina la carrera corta y PostgreSQL decide la reserva definitiva. Stripe mueve el ticket de `LOCKED` a `PAID` mediante webhook firmado; la moneda y el importe se toman del asiento persistido y se comprueban al confirmar. Si Redis cae, PostgreSQL sigue siendo la autoridad.
 
 ## Qué hay
 
