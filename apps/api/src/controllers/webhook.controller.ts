@@ -45,8 +45,10 @@ export class WebhookController {
           return reply.status(400).send({ status: 'error', message: 'Payment metadata is incomplete' });
         }
         const outcome = await this.service.confirmReservation(eventId, seatId, event.id);
-        if (outcome === 'expired' && event.type === 'payment_intent.succeeded') {
-          const paymentIntentId = typeof payment.id === 'string' ? payment.id : undefined;
+        if (outcome === 'expired') {
+          const paymentIntentId = event.type === 'payment_intent.succeeded'
+            ? payment.id
+            : payment.payment_intent;
           if (!paymentIntentId) throw new Error('Expired payment has no PaymentIntent id for refund');
           await stripe.refunds.create(
             { payment_intent: paymentIntentId },
