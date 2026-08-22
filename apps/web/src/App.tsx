@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Zap, Activity, Shield, ShieldAlert, Globe, Database, Server } from 'lucide-react';
+import { Zap, Activity, Shield, Globe, Database, Radio } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import CyberArena from './CyberArena';
@@ -10,13 +10,17 @@ function cn(...inputs: ClassValue[]) {
 
 export default function App() {
   const apiBase = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+  const eventId = import.meta.env.VITE_EVENT_ID;
   const [isConnected, setIsConnected] = useState(false);
-  const [isAttacked, setIsAttacked] = useState(false);
-  const [logs, setLogs] = useState<string[]>([]);
+  const [logs, setLogs] = useState<Array<{ message: string; at: number }>>([]);
   const [health, setHealth] = useState<{
     status: string;
     checks: { database: { status: string; latency: number }; redis: { status: string; latency: number }; memory: { status: string; percentage: number } };
   } | null>(null);
+
+  const addLog = (message: string) => {
+    setLogs((prev) => [{ message, at: Date.now() }, ...prev].slice(0, 10));
+  };
 
   useEffect(() => {
     let mounted = true;
@@ -28,7 +32,7 @@ export default function App() {
         if (mounted) setHealth(payload);
       } catch (error) {
         if (mounted) setHealth(null);
-        setLogs((prev) => [`HEALTH: ${error instanceof Error ? error.message : 'unreachable'}`, ...prev].slice(0, 10));
+        addLog(`HEALTH: ${error instanceof Error ? error.message : 'unreachable'}`);
       }
     };
     refreshHealth();
@@ -41,11 +45,6 @@ export default function App() {
   const apiLatency = health?.checks?.database?.latency ?? 0;
   const memoryUsage = health?.checks?.memory?.percentage ?? 0;
 
-  const infraStatus = {
-    region: 'runtime',
-    waf: statusLabel,
-    k8s: isConnected ? 'WebSocket online' : 'WebSocket offline'
-  };
   const socketRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
@@ -55,21 +54,18 @@ export default function App() {
 
     socket.onopen = () => {
       setIsConnected(true);
-      setLogs(prev => ['SYSTEM: Link Established with Edge Node', ...prev]);
+      addLog('WebSocket connected');
+      if (eventId) socket.send(JSON.stringify({ type: 'SUBSCRIBE_STREAM', eventId, lastId: '0-0' }));
     };
     socket.onclose = () => setIsConnected(false);
     socket.onmessage = (event) => {
-      let data: { type?: string; status?: string; message?: string };
+      let data: { type?: string; code?: string; message?: string; id?: string; eventId?: string };
       try { data = JSON.parse(event.data); } catch { return; }
-      if (data.type === 'ATTACK_STATUS') {
-        setIsAttacked(data.status === 'ATTACK');
-      }
-      if (data.type === 'LOG') {
-        if (data.message) setLogs(prev => [data.message as string, ...prev].slice(0, 10));
-      }
+      if (data.type === 'STREAM_EVENT') addLog(`STREAM ${data.eventId ?? eventId ?? 'unknown'} · ${data.id ?? 'event'}`);
+      if (data.type === 'ERROR') addLog(`WebSocket ${data.code ?? 'error'}: ${data.message ?? 'request rejected'}`);
     };
     return () => socket.close();
-  }, [apiBase]);
+  }, [apiBase, eventId]);
 
   return (
     <div className="min-h-screen bg-slate-950 p-8 font-sans selection:bg-indigo-500/30">
@@ -77,29 +73,21 @@ export default function App() {
         <div>
           <div className="flex items-center gap-3 mb-2">
             <span className="px-2 py-1 rounded bg-indigo-500/10 text-indigo-400 text-[10px] font-bold uppercase tracking-wider border border-indigo-500/20">
-              Global Deployment Center
+              MegaTicketing runtime
             </span>
-            {isAttacked && (
-              <span className="flex items-center gap-1.5 text-[10px] text-red-400 font-black uppercase tracking-[0.2em] animate-pulse">
-                <ShieldAlert size={14} /> Edge Threat Detected
-              </span>
-            )}
           </div>
           <h1 className="text-6xl font-extrabold tracking-tighter bg-gradient-to-br from-white via-slate-200 to-slate-500 bg-clip-text text-transparent uppercase">
-            Global Defense Arena
+            Seat inventory
           </h1>
         </div>
         
         <div className="flex gap-4">
           <div className="hidden lg:flex gap-6 items-center px-6 py-2 border border-white/5 rounded-2xl bg-white/[0.02]">
             <div className="flex items-center gap-2 text-slate-500 text-[10px] font-bold uppercase tracking-widest border-r border-white/10 pr-6">
-              <Globe size={14} /> {infraStatus.region}
-            </div>
-            <div className="flex items-center gap-2 text-slate-500 text-[10px] font-bold uppercase tracking-widest border-r border-white/10 pr-6">
-              <Shield size={14} className="text-emerald-500" /> WAF: {infraStatus.waf}
+              <Globe size={14} /> API: {apiBase}
             </div>
             <div className="flex items-center gap-2 text-slate-500 text-[10px] font-bold uppercase tracking-widest">
-              <Server size={14} className="text-indigo-400" /> K8s: {infraStatus.k8s}
+              <Radio size={14} className={isConnected ? 'text-emerald-500' : 'text-slate-600'} /> Stream: {isConnected ? 'online' : 'offline'}
             </div>
           </div>
           
@@ -152,13 +140,13 @@ export default function App() {
           </div>
 
           <div className="bg-white/[0.02] p-8 rounded-[2rem] border border-white/5">
-            <h3 className="text-xs font-bold text-slate-500 mb-6 uppercase tracking-widest">Global Event Stream</h3>
+            <h3 className="text-xs font-bold text-slate-500 mb-6 uppercase tracking-widest">Redis event stream</h3>
             <div className="space-y-4 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
               {logs.map((log, i) => (
                 <div key={i} className="flex flex-col gap-1 border-l-2 border-indigo-500/20 pl-4">
-                  <span className="text-[9px] text-slate-600 uppercase">{new Date().toLocaleTimeString()}</span>
-                  <span className={cn("text-[10px] font-medium", log.includes('SHIELD') ? 'text-emerald-400' : 'text-slate-400')}>
-                    {log}
+                  <span className="text-[9px] text-slate-600 uppercase">{new Date(log.at).toLocaleTimeString()}</span>
+                  <span className={cn("text-[10px] font-medium", log.message.startsWith('STREAM') ? 'text-emerald-400' : 'text-slate-400')}>
+                    {log.message}
                   </span>
                 </div>
               ))}

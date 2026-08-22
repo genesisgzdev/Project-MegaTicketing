@@ -11,7 +11,8 @@ La primera figura ubica las dependencias. La segunda sigue una reserva que compi
 ~~~mermaid
 flowchart TB
     WEB[React seat map] -->|seat polling| HTTP[Fastify API]
-    OPS[React operations] -->|health metrics socket| HTTP
+    OPS[React operations] -->|health HTTP| HTTP
+    OPS -->|event stream WebSocket| HTTP
     CLIENT[client with JWT] -->|reserve request| HTTP
     HTTP --> CTX[request context and errors]
     HTTP --> RL[Redis rate limit]
@@ -29,7 +30,7 @@ flowchart TB
     HEALTH --> R
 ~~~
 
-El WebSocket `/ws` no es el canal del mapa de asientos: `CyberArena` hace polling. `/ws` consume streams operativos por evento; los controles de defensa no están conectados a una policy de runtime y se rechazan explícitamente.
+El WebSocket `/ws` no es el canal del mapa de asientos: `CyberArena` hace polling. El panel de operaciones se suscribe al stream del evento solo cuando existe `VITE_EVENT_ID` y muestra los IDs que recibe. No presenta WAF, Kubernetes, región ni detecciones de ataque porque la API no expone esas señales. Los controles de defensa se rechazan explícitamente.
 
 ## 2. Reserva bajo concurrencia
 

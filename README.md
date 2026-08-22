@@ -96,11 +96,13 @@ El resultado esperado es un solo `201`, ningún `5xx` y `invariant.safe: true`. 
 - `/health` comprueba PostgreSQL, Redis y memoria
 - `/health/ready` no informa readiness si una dependencia crítica está caída
 - `/metrics` expone métricas para Prometheus
-- `CORS_ORIGINS`, `OTEL_EXPORTER_OTLP_ENDPOINT` y `VITE_API_URL` son configuración explícita
+- `CORS_ORIGINS`, `OTEL_EXPORTER_OTLP_ENDPOINT`, `VITE_API_URL` y `VITE_EVENT_ID` son configuración explícita
 - `npm run test:api:integration` ejecuta las pruebas de integración cuando hay servicios disponibles
 - `npm audit` y la revisión de seguridad deben formar parte del gate antes de publicar
 
 PostgreSQL es la fuente de verdad de asientos y tickets. Redis es coordinación temporal, rate limiting, idempotencia y stream. Stripe es una dependencia externa para pagos y su webhook firmado es la transición de pago. React no decide disponibilidad y los manifiestos no equivalen a un despliegue observado.
+
+El panel web solo muestra datos que recibe del runtime: health de la API, estado de la conexión WebSocket e IDs de eventos del stream cuando `VITE_EVENT_ID` está definido. No representa estado de WAF, Kubernetes, región ni detecciones de ataque porque esta aplicación no los expone.
 
 La arquitectura y las decisiones de seguridad están en [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) y [SECURITY.md](SECURITY.md).
 
