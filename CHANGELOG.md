@@ -2,7 +2,7 @@
 
 All notable changes are documented here using Semantic Versioning.
 
-## [Unreleased]
+## [2.1.2] — 2026-08-22
 
 ### Fixed
 
@@ -19,6 +19,14 @@ All notable changes are documented here using Semantic Versioning.
 - Reclama filas outbox con `SKIP LOCKED` y lease recuperable para evitar publicaciones concurrentes entre réplicas.
 - Rechaza webhooks de pago que llegan después del TTL persistido, cancela el ticket y libera el asiento antes de solicitar el refund.
 - Conserva el `refundId` y permite reintentar un refund pendiente después de una caída entre la cancelación y la respuesta de Stripe.
+- Impide reciclar un asiento pagado cuando su marca histórica de lock supera el TTL.
+
+### Riesgo y actualización
+
+- No cambia el esquema ni requiere migración.
+- La release corrige una ruta de consistencia de reservas pagadas y se valida con PostgreSQL y Redis.
+
+## [Unreleased]
 
 ## [2.1.1] — 2026-08-20
 
