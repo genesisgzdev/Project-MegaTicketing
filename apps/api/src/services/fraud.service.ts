@@ -1,4 +1,4 @@
-﻿import redis from '../redis';
+﻿import { incrementWithExpiry } from '../redis';
 
 /**
  * FraudService: Module for detecting suspicious reservation patterns.
@@ -35,10 +35,10 @@ export class FraudService {
     const ipKey = `fraud:velocity:ip:${ip}:event:${eventId}`;
     const userKey = `fraud:velocity:user:${userId}:event:${eventId}`;
     
-    const [ipCount, userCount] = await Promise.all([redis.incr(ipKey), redis.incr(userKey)]);
-    
-    if (ipCount === 1) await redis.expire(ipKey, this.VELOCITY_WINDOW);
-    if (userCount === 1) await redis.expire(userKey, this.VELOCITY_WINDOW);
+    const [ipCount, userCount] = await Promise.all([
+      incrementWithExpiry(ipKey, this.VELOCITY_WINDOW),
+      incrementWithExpiry(userKey, this.VELOCITY_WINDOW),
+    ]);
 
     return ipCount > this.VELOCITY_LIMIT || userCount > this.VELOCITY_LIMIT;
   }
@@ -50,16 +50,10 @@ export class FraudService {
   private async recordEventPressure(eventId: string): Promise<void> {
     const key = `fraud:pattern:event:${eventId}`;
     
-    const count = await redis.incr(key);
-    
-    if (count === 1) {
-      await redis.expire(key, this.PATTERN_WINDOW);
-    }
+    const count = await incrementWithExpiry(key, this.PATTERN_WINDOW);
 
     if (count === this.EVENT_PRESSURE_LIMIT + 1) {
       // Keep this signal available for metrics/operations without punishing every buyer.
-      await redis.expire(key, this.PATTERN_WINDOW);
     }
   }
 }
-

@@ -94,6 +94,8 @@ El resultado esperado es un solo `201`, ningún `5xx` y `invariant.safe: true`. 
 
 PostgreSQL es la fuente de verdad de asientos y tickets. Redis es coordinación temporal, rate limiting, idempotencia y stream. Stripe es una dependencia externa para pagos y su webhook firmado es la transición de pago. React no decide disponibilidad y los manifiestos no equivalen a un despliegue observado.
 
+Las ventanas de velocidad de fraude se incrementan y reciben su TTL dentro del mismo script Redis. Una caída entre ambos comandos no puede convertir una señal temporal en un bloqueo permanente.
+
 La arquitectura y las decisiones de seguridad están en [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) y [SECURITY.md](SECURITY.md).
 
 ## Licencia

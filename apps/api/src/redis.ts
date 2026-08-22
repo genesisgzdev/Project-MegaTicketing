@@ -79,4 +79,10 @@ export const releaseSeat = async (eventId: string, seatId: string, lockToken: st
   return await seatLease.unlock(`${eventId}:${seatId}`, lockToken);
 };
 
+export const incrementWithExpiry = async (key: string, windowSeconds: number): Promise<number> => {
+  const script = `local current = redis.call("incr", KEYS[1]); if current == 1 then redis.call("expire", KEYS[1], ARGV[1]); end; return current`;
+  const result = await redis.eval(script, 1, key, String(windowSeconds));
+  return Number(result);
+};
+
 export default redis;

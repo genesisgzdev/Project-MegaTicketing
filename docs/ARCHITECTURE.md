@@ -100,6 +100,7 @@ Los IDs de webhooks procesados también quedan en PostgreSQL con una clave únic
 - `/health` devuelve estado de database, Redis y heap; `/health/ready` exige query SQL y `PING` Redis.
 - `PubSubService` publica outbox pendientes, consume y recupera mensajes pendientes del stream `stream:orders:reserved`; hoy el consumidor registra y hace ACK, no es un procesador externo de fulfillment.
 - La presión del evento se registra como señal operativa. El bloqueo de fraude se calcula por actor y ventana, no por el total de compradores de un evento.
+- Los contadores de actor y presión se actualizan con `INCR` y `EXPIRE` dentro del mismo script Redis; la ventana no depende de dos comandos separados.
 - `defenseActive` ya no aparece como estado operativo: los mensajes WebSocket de activar o desactivar defensa se rechazan mientras no exista una política conectada al runtime.
 - Docker, Kubernetes, Terraform, Nginx y Cloudflare son superficies de despliegue configuradas en el repo, no prueba de una cuenta cloud desplegada.
 - `npm run load:test` necesita API, PostgreSQL, Redis y UUIDs sembrados. El resultado válido es exactamente un `201`, cero `5xx` e invariant safe.
