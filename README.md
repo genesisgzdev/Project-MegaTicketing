@@ -73,6 +73,8 @@ En producción el JWT debe incluir `iss` y `aud`, y la configuración exige `JWT
 
 `POST /payments/intents` solo trabaja con una reserva `LOCKED` vigente del usuario.
 
+Si la reserva deja de pertenecer al usuario mientras Stripe crea el `PaymentIntent`, la vinculación local no se acepta como éxito; el flujo debe quedar en revisión/reintento y nunca reutiliza los datos de pago de una reserva anterior.
+
 `POST /webhook` comprueba la firma de Stripe y procesa los eventos de pago de forma idempotente. Si el procesamiento falla se permite el retry legítimo del proveedor.
 
 Los eventos de Stripe procesados se guardan en PostgreSQL. Si un pago confirmado llega después de que la reserva expiró, no revive el ticket: se cancela, se conserva el `refundId` cuando Stripe confirma el refund y un retry puede repetir la solicitud con la misma clave idempotente si el proceso cayó antes de guardarlo. Los eventos de reserva pendientes también quedan en PostgreSQL hasta que el publicador los entrega a Redis Streams. Redis coordina la carrera corta y transporta eventos; no decide la venta.

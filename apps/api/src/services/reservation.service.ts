@@ -52,7 +52,19 @@ export class ReservationService {
           }
           await transaction.ticket.update({
             where: { seatId },
-            data: { userId, status: 'LOCKED', createdAt: new Date() },
+            // A recycled seat must not inherit any payment binding from the
+            // previous reservation. A late Stripe webhook for that intent
+            // must fail closed instead of paying the new buyer's ticket.
+            data: {
+              userId,
+              status: 'LOCKED',
+              createdAt: new Date(),
+              paymentIntentId: null,
+              paymentAmountMinor: null,
+              paymentCurrency: null,
+              paidAt: null,
+              refundId: null,
+            },
           });
         } else {
           await transaction.ticket.create({ data: { userId, seatId, status: 'LOCKED' } });
