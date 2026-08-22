@@ -1,12 +1,12 @@
 {
   "name": "@mega-ticketing/api",
   "version": "2.1.1",
-  "main": "dist/index.js",
+  "main": "dist/apps/api/src/index.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
     "test": "vitest run --config vitest.config.ts",
-    "start": "node dist/index.js"
+    "start": "node dist/apps/api/src/index.js"
   },
   "dependencies": {
     "@fastify/cors": "^11.3.0",
