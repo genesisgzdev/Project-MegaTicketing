@@ -17,11 +17,14 @@ export class ReservationService {
     try {
       await db.$transaction(async (transaction) => {
         const expiredBefore = new Date(Date.now() - config.SEAT_LOCK_TTL_MS);
-        const expiredSeats = await transaction.seat.findMany({
+        const expiredSeat = await transaction.seat.findFirst({
           where: { id: seatId, eventId, isLocked: true, lockedAt: { lt: expiredBefore } },
-          select: { id: true },
+          select: { id: true, ticket: { select: { status: true } } },
         });
-        if (expiredSeats.length) {
+        if (expiredSeat?.ticket?.status === 'PAID') {
+          throw new ReservationConflictError('Seat has already been sold');
+        }
+        if (expiredSeat) {
           await transaction.ticket.updateMany({
             where: { seatId, status: 'LOCKED' },
             data: { status: 'CANCELLED' },
@@ -44,6 +47,9 @@ export class ReservationService {
 
         const existingTicket = await transaction.ticket.findUnique({ where: { seatId } });
         if (existingTicket) {
+          if (existingTicket.status === 'PAID') {
+            throw new ReservationConflictError('Seat has already been sold');
+          }
           await transaction.ticket.update({
             where: { seatId },
             data: { userId, status: 'LOCKED', createdAt: new Date() },

@@ -14,6 +14,7 @@ integration('PostgreSQL and Redis runtime gates', () => {
   const service = new ReservationService();
   const eventId = randomUUID();
   const userId = randomUUID();
+  const secondUserId = randomUUID();
   const seatId = randomUUID();
   let lockToken: string | null = null;
   let initialized = false;
@@ -22,6 +23,7 @@ integration('PostgreSQL and Redis runtime gates', () => {
     await db.$connect();
     await redis.ping();
     await db.user.create({ data: { id: userId, email: `${userId}@example.test` } });
+    await db.user.create({ data: { id: secondUserId, email: `${secondUserId}@example.test` } });
     await db.event.create({ data: { id: eventId, title: 'Integration event', date: new Date(Date.now() + 86_400_000) } });
     await db.seat.create({ data: { id: seatId, eventId, seatNumber: `INT-${seatId.slice(0, 8)}`, price: 10 } });
     initialized = true;
@@ -39,6 +41,7 @@ integration('PostgreSQL and Redis runtime gates', () => {
     await db.seat.delete({ where: { id: seatId } });
     await db.event.delete({ where: { id: eventId } });
     await db.user.delete({ where: { id: userId } });
+    await db.user.delete({ where: { id: secondUserId } });
     await db.$disconnect();
     await redis.quit();
   });
@@ -60,6 +63,21 @@ integration('PostgreSQL and Redis runtime gates', () => {
       id: 'pi_integration', amountMinor: 1000, currency: 'usd',
     })).toBe('duplicate');
     expect((await db.ticket.findUnique({ where: { seatId } }))?.status).toBe('PAID');
+  });
+
+  it('does not recycle a paid seat when its historical lock timestamp is old', async () => {
+    if (lockToken) {
+      await releaseSeat(eventId, seatId, lockToken);
+      lockToken = null;
+    }
+    await db.seat.update({
+      where: { id: seatId },
+      data: { lockedAt: new Date(Date.now() - config.SEAT_LOCK_TTL_MS - 1_000) },
+    });
+
+    expect(await service.reserveSeat(eventId, seatId, secondUserId)).toBeNull();
+    expect((await db.ticket.findUnique({ where: { seatId } }))?.status).toBe('PAID');
+    expect((await db.seat.findUnique({ where: { id: seatId } }))?.isLocked).toBe(true);
   });
 
   it('replays an idempotent response and does not execute the handler twice', async () => {
