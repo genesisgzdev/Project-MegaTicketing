@@ -69,7 +69,7 @@ No pongas claves de producción en el repositorio ni uses valores de ejemplo par
 
 `POST /webhook` comprueba la firma de Stripe y procesa los eventos de pago de forma idempotente. Si el procesamiento falla se permite el retry legítimo del proveedor.
 
-Los eventos de Stripe procesados se guardan en PostgreSQL. Si un pago confirmado llega después de que la reserva expiró, no revive el ticket: se solicita un refund idempotente a Stripe. Los eventos de reserva pendientes también quedan en PostgreSQL hasta que el publicador los entrega a Redis Streams. Redis coordina la carrera corta y transporta eventos; no decide la venta.
+Los eventos de Stripe procesados se guardan en PostgreSQL. Si un pago confirmado llega después de que la reserva expiró, no revive el ticket: se cancela, se conserva el `refundId` cuando Stripe confirma el refund y un retry puede repetir la solicitud con la misma clave idempotente si el proceso cayó antes de guardarlo. Los eventos de reserva pendientes también quedan en PostgreSQL hasta que el publicador los entrega a Redis Streams. Redis coordina la carrera corta y transporta eventos; no decide la venta.
 
 Los importes se convierten a unidades menores según la moneda antes de llamar a Stripe. El precio se toma de PostgreSQL, no del frontend.
 

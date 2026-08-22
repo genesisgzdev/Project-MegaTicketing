@@ -101,5 +101,10 @@ integration('PostgreSQL and Redis runtime gates', () => {
     })).toBe('expired');
     expect((await db.ticket.findUnique({ where: { seatId } }))?.status).toBe('CANCELLED');
     expect((await db.seat.findUnique({ where: { id: seatId } }))?.isLocked).toBe(false);
+
+    const pendingRefund = await service.findPendingRefund(eventId, seatId, 'pi_integration');
+    expect(pendingRefund).toEqual({ id: expect.any(String) });
+    await service.markRefundCompleted(pendingRefund!.id, 're_integration');
+    expect(await service.findPendingRefund(eventId, seatId, 'pi_integration')).toBeNull();
   });
 });

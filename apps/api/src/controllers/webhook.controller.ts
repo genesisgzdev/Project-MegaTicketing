@@ -10,6 +10,18 @@ export class WebhookController {
   private service: ReservationService;
   constructor(private app: FastifyInstance) { this.service = new ReservationService(); }
 
+  private async refundIfPending(eventId: string, seatId: string, paymentIntentId: string): Promise<void> {
+    const ticket = await this.service.findPendingRefund(eventId, seatId, paymentIntentId);
+    if (!ticket) return;
+
+    const refund = await stripe.refunds.create(
+      { payment_intent: paymentIntentId },
+      { idempotencyKey: `refund:${paymentIntentId}` },
+    );
+    await this.service.markRefundCompleted(ticket.id, refund.id);
+    this.app.log.warn({ eventId, seatId, refundId: refund.id }, 'Payment arrived after reservation expiry; refund completed');
+  }
+
   async handleStripeWebhook(request: FastifyRequest, reply: FastifyReply) {
     const sig = request.headers['stripe-signature'] as string;
     let event: any;
@@ -36,19 +48,24 @@ export class WebhookController {
     }
 
     try {
-      const isProcessed = await this.service.isEventProcessed(event.id);
-      if (isProcessed) return reply.status(200).send({ received: true });
-
-      if (event.type === 'checkout.session.completed' || event.type === 'payment_intent.succeeded') {
+      const isPaymentEvent = event.type === 'checkout.session.completed' || event.type === 'payment_intent.succeeded';
+      if (isPaymentEvent) {
         const payment = event.data.object as any;
         const { eventId, seatId } = payment.metadata || {};
+        const paymentIntentId = event.type === 'payment_intent.succeeded'
+          ? payment.id
+          : payment.payment_intent;
+
+        const isProcessed = await this.service.isEventProcessed(event.id);
+        if (isProcessed) {
+          if (eventId && seatId && paymentIntentId) await this.refundIfPending(eventId, seatId, paymentIntentId);
+          return reply.status(200).send({ received: true });
+        }
+
         if (!eventId || !seatId) {
           this.app.log.warn({ eventId: event.id }, 'Stripe event missing reservation metadata');
           return reply.status(400).send({ status: 'error', message: 'Payment metadata is incomplete' });
         }
-        const paymentIntentId = event.type === 'payment_intent.succeeded'
-          ? payment.id
-          : payment.payment_intent;
         const amountMinor = event.type === 'payment_intent.succeeded'
           ? payment.amount_received ?? payment.amount
           : payment.amount_total;
@@ -60,12 +77,10 @@ export class WebhookController {
         });
         if (outcome === 'expired') {
           if (!paymentIntentId) throw new Error('Expired payment has no PaymentIntent id for refund');
-          await stripe.refunds.create(
-            { payment_intent: paymentIntentId },
-            { idempotencyKey: `refund:${event.id}` },
-          );
-          this.app.log.warn({ eventId: event.id, seatId }, 'Payment arrived after reservation expiry; refund requested');
+          await this.refundIfPending(eventId, seatId, paymentIntentId);
         }
+      } else if (await this.service.isEventProcessed(event.id)) {
+        return reply.status(200).send({ received: true });
       }
     } catch (error) {
       await redis.del(idempotencyKey);

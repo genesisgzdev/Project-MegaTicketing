@@ -53,6 +53,7 @@ model Ticket {
   status    TicketStatus @default(LOCKED)
   createdAt DateTime     @default(now())
   paymentIntentId String? @unique
+  refundId String? @unique
   paymentAmountMinor Int?
   paymentCurrency String?
   paidAt DateTime?
