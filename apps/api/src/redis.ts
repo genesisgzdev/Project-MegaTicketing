@@ -41,10 +41,10 @@ export class RedisCircuitBreaker {
 }
 
 /**
- * Enterprise Redlock implementation for high-concurrency ticket reservations.
- * Ensures distributed mutual exclusion with cryptographic nonces and strict TTLs.
+ * Single-instance Redis lease for the short reservation race.
+ * PostgreSQL remains the authority for the ticket and seat invariant.
  */
-class RedlockProcessor {
+class RedisSeatLease {
   private redis: Redis;
   constructor(client: Redis) { this.redis = client; }
 
@@ -69,14 +69,14 @@ const redis = new Redis({
 
 redis.on('error', (err) => console.error('CRITICAL: Redis Connection Lost', err));
 
-const redlock = new RedlockProcessor(redis);
+const seatLease = new RedisSeatLease(redis);
 
 export const lockSeat = async (eventId: string, seatId: string, userId: string): Promise<string | null> => {
-  return await redlock.lock(`${eventId}:${seatId}`, config.SEAT_LOCK_TTL_MS);
+  return await seatLease.lock(`${eventId}:${seatId}`, config.SEAT_LOCK_TTL_MS);
 };
 
 export const releaseSeat = async (eventId: string, seatId: string, lockToken: string): Promise<boolean> => {
-  return await redlock.unlock(`${eventId}:${seatId}`, lockToken);
+  return await seatLease.unlock(`${eventId}:${seatId}`, lockToken);
 };
 
 export default redis;

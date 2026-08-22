@@ -36,11 +36,18 @@ export class WebhookRetryManager {
 
     const delay = this.calculateDelay(attempt);
     const retryKey = `webhook_retry:${webhookId}:${attempt + 1}`;
+    const retentionSeconds = Math.ceil(
+      (delay + this.config.maxDelayMs) / 1000,
+    ) + 60;
 
     await this.redis.setex(
       retryKey,
-      Math.ceil(delay / 1000),
-      JSON.stringify({ payload, attempt: attempt + 1 }),
+      retentionSeconds,
+      JSON.stringify({
+        payload,
+        attempt: attempt + 1,
+        nextAttemptAt: Date.now() + delay,
+      }),
     );
 
     logger.info(
