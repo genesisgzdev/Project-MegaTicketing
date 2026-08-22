@@ -10,20 +10,20 @@ La primera figura ubica las dependencias. La segunda sigue una reserva que compi
 
 ~~~mermaid
 flowchart TB
-    WEB[React/Vite CyberArena] -->|GET seats cada 5s| HTTP[Fastify API]
-    OPS[React App/SystemMonitor] -->|health metrics ws| HTTP
-    CLIENT[cliente con Bearer JWT] -->|POST reserve| HTTP
-    HTTP --> CTX[request context + error handler]
-    HTTP --> RL[rate limit Redis en producción]
-    HTTP --> AUTH[authenticateUser: JWT sub == userId]
-    AUTH --> FRAUD[FraudService velocity/pattern]
-    FRAUD --> RES[ReservationController + ReservationService]
-    RES -->|SET NX PX / Lua release| R[(Redis keys)]
-    RES -->|transaction + conditional update| DB[(PostgreSQL Prisma)]
-    RES -->|XADD stream:orders:reserved| ORD[Redis consumer group]
-    STRIPE[Stripe] -->|raw signed /webhook| PAY[WebhookController]
-    PAY -->|LOCKED to PAID| DB
-    HTTP --> HEALTH[/health /health/ready /metrics]
+    WEB[React seat map] -->|seat polling| HTTP[Fastify API]
+    OPS[React operations] -->|health metrics socket| HTTP
+    CLIENT[client with JWT] -->|reserve request| HTTP
+    HTTP --> CTX[request context and errors]
+    HTTP --> RL[Redis rate limit]
+    HTTP --> AUTH[JWT authentication]
+    AUTH --> FRAUD[fraud service]
+    FRAUD --> RES[reservation service]
+    RES -->|lock and release| R[(Redis keys)]
+    RES -->|database transaction| DB[(PostgreSQL)]
+    RES -->|reserved event| ORD[Redis consumer]
+    STRIPE[Stripe] -->|signed webhook| PAY[payment webhook]
+    PAY -->|paid state| DB
+    HTTP --> HEALTH[health readiness metrics]
     HEALTH --> DB
     HEALTH --> R
 ~~~
@@ -36,23 +36,23 @@ El WebSocket `/ws` no es el canal del mapa de asientos: `CyberArena` hace pollin
 sequenceDiagram
     participant C as client
     participant API as ReservationController
-    participant A as JWT + FraudService
+    participant A as auth and fraud
     participant R as Redis nonce
     participant PG as PostgreSQL transaction
     participant X as Redis order stream
-    C->>API: POST /reserve eventId seatId userId
+    C->>API: reserve event and seat
     API->>API: Zod UUID validation
-    API->>A: authenticateUser + detectFraud
-    A-->>API: allow or 401/403
+    API->>A: authenticate and check fraud
+    A-->>API: allow or reject
     API->>R: SET lock:event:seat NX PX
     alt nonce lost
       R-->>API: no token
       API-->>C: 409
     else nonce acquired
-      API->>PG: expire old LOCKED ticket/seat if TTL elapsed
+    API->>PG: expire old locked ticket when needed
       API->>PG: find user and seat
       API->>PG: UPDATE Seat WHERE isLocked=false
-      API->>PG: create/update unique Ticket LOCKED
+    API->>PG: create or update locked ticket
       alt transaction fails
         API->>R: Lua release with nonce
         API-->>C: error or 409
@@ -68,9 +68,9 @@ sequenceDiagram
 ~~~mermaid
 stateDiagram-v2
     [*] --> available
-    available --> held: Seat.isLocked=true + Ticket LOCKED
-    held --> available: TTL expiry / Ticket CANCELLED
-    held --> sold: signed Stripe success / Ticket PAID
+    available --> held: seat locked and ticket locked
+    held --> available: expiry or cancellation
+    held --> sold: signed payment success
     sold --> sold: duplicate webhook ignored
     available --> available: failed reservation releases nonce
 ~~~
