@@ -8,10 +8,15 @@ variable "cloudflare_account_id" {
   sensitive   = true
 }
 
-resource "cloudflare_worker_script" "seatmap_cache" {
+resource "cloudflare_workers_script" "seatmap_cache" {
   account_id = var.cloudflare_account_id
-  name       = "megaticketing-seatmap-cache"
+  script_name = "megaticketing-seatmap-cache"
   content    = file("${path.module}/seatmap-cache.js")
+}
+
+moved {
+  from = cloudflare_worker_script.seatmap_cache
+  to   = cloudflare_workers_script.seatmap_cache
 }
 
 output "cloudflare_load_balancer_hostname" {
