@@ -1,26 +1,34 @@
-# Infrastructure contract
+# Preparar la infraestructura
 
-Terraform is the authoritative deployment surface in this directory. The CI workflow only runs syntax and validation checks; it does not create a GKE cluster, publish an image or apply Kubernetes resources.
+Esta carpeta sirve a quien publica MegaTicketing. Para usar una web ya publicada, empieza por la [guía de reservas](../docs/USO.md). Para levantar el proyecto en tu equipo, usa las instrucciones de Compose del [README](../README.md).
 
-Before a real plan or apply, provide:
+## Qué hace esta configuración
 
-- `api_image` with an immutable container digest such as `registry.example/api@sha256:<digest>`
-- a least-privilege Kubernetes service account named by `kubernetes_service_account_name`
-- an externally managed Secret named by `runtime_secret_name`
-- provider credentials and a reviewed Terraform backend
+Terraform describe los recursos de despliegue. CI comprueba que la configuración sea válida, pero no crea un clúster, publica imágenes ni modifica una cuenta cloud.
 
-The runtime Secret contains the database URL, JWT secret, Stripe keys and Redis password. Secret values are intentionally not managed by Terraform here. The API deployment owns its readiness/liveness probes and HPA in `kubernetes.tf`.
+Antes de preparar un plan necesitas:
 
-There is no Helm chart or deployment command in this repository. Adding an apply job requires a separate review of state locking, environment approvals, image promotion, secret rotation and rollback.
+| Dato | Para qué sirve |
+| --- | --- |
+| `api_image` con un digest inmutable | Identificar exactamente la imagen que se va a ejecutar |
+| `kubernetes_service_account_name` | Usar una cuenta de servicio con los permisos necesarios |
+| `runtime_secret_name` | Leer la configuración privada preparada fuera de Terraform |
+| Credenciales del proveedor y almacenamiento de estado revisado | Conectar con la cuenta y conservar qué recursos administra Terraform |
 
-## Existing Cloudflare state
+El secreto de ejecución contiene la conexión de base de datos, configuración de acceso, claves de Stripe y contraseña de Redis. Sus valores no se gestionan en estos archivos. `kubernetes.tf` define las comprobaciones de disponibilidad y el ajuste del número de réplicas.
 
-The configuration uses Cloudflare provider 5.24.0 and Terraform 1.8 or later. Before upgrading an existing v4 workspace, complete the provider's transition through v4.52.5 using the previous configuration. The checked-in `moved` blocks then let the v5 provider migrate Worker scripts and routes without replacing their remote objects.
+No hay un chart Helm en el repositorio. Añadir un despliegue automático requiere definir aprobación del entorno, bloqueo del estado, publicación de imágenes, rotación de secretos y recuperación.
 
-For an existing zone, import its current `http_request_firewall_custom` ruleset into `cloudflare_ruleset.ticketing_firewall` and retain every existing rule in that ruleset before applying this configuration. The `removed` blocks stop tracking the retired filter/firewall addresses with `destroy = false`; they do not delete the remote firewall protections. Confirm that the resulting plan contains no unintended rule removals or Worker replacements. CI validates the schema only and does not perform this account/state migration.
+## Si ya tienes recursos de Cloudflare
 
-The migrated reservation policy preserves the former expression and `block` action. It blocks matching POST requests; it is not a request-count rate limiter. A different policy requires explicit traffic limits and a separate reviewed change.
+La configuración usa el proveedor Cloudflare 5.24.0 y Terraform 1.8 o posterior. Si vienes de un estado v4, completa primero la transición por v4.52.5 usando la configuración anterior. Los bloques `moved` permiten migrar scripts y rutas del Worker sin sustituir sus objetos remotos.
 
-Provider migration: https://registry.terraform.io/providers/cloudflare/cloudflare/5.24.0/docs/guides/version-5-migration
+Para una zona existente, importa su conjunto actual de reglas `http_request_firewall_custom` en `cloudflare_ruleset.ticketing_firewall`. Conserva todas sus reglas antes de aplicar. Los bloques `removed` con `destroy = false` dejan de administrar las direcciones antiguas sin borrar sus protecciones remotas.
 
-Firewall state migration: https://developers.cloudflare.com/waf/reference/legacy/firewall-rules-upgrade/
+Revisa que el plan no elimine reglas ajenas ni sustituya Workers de forma involuntaria. La validación de CI no realiza esta migración de estado.
+
+La regla de reservas conserva la expresión anterior y su acción de bloqueo. Bloquea peticiones POST que coincidan; no cuenta peticiones para limitar una frecuencia. Cambiar ese comportamiento exige definir la política de tráfico deseada.
+
+Referencias del proveedor: [migración a v5](https://registry.terraform.io/providers/cloudflare/cloudflare/5.24.0/docs/guides/version-5-migration) y [migración de reglas](https://developers.cloudflare.com/waf/reference/legacy/firewall-rules-upgrade/).
+
+[Preparar la aplicación y sus datos](../docs/DEPLOYMENT_PREFLIGHT.md)
