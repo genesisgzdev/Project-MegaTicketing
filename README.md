@@ -73,4 +73,4 @@ Las pruebas de integración usan PostgreSQL y Redis reales. `npm run test:api:in
 
 La [guía](docs/USO.md) explica el comportamiento de reservas y errores. La [arquitectura](docs/ARCHITECTURE.md) y el [mapa de archivos](docs/REPOSITORY_MAP.md) permiten seguir el código cuando lo necesites.
 
-Licencia [MIT](LICENSE).
+Licencia [Apache 2.0](LICENSE).

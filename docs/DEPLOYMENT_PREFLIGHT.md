@@ -1,21 +1,52 @@
-# Deployment preflight boundary
+# Antes de publicar MegaTicketing
 
-This repository currently contains Terraform configuration for GCP/Kubernetes and Cloudflare, but it does not contain `k8s/helm/megaticketing`. There is therefore no Helm release target in this repository.
+Esta guía está dirigida a quien administra la instalación. La [guía de uso](USO.md) explica la selección de asientos. Publicar requiere una base de datos, Redis, acceso de usuarios, integración de pagos y un entorno donde ejecutar la web y la API.
 
-The CI workflow validates Terraform and reports the missing chart as a skipped deployment target. It does not apply Terraform, push container images, or deploy Kubernetes. Terraform is the only Kubernetes source in the repository; the old standalone deployment and HPA manifests are not deployment targets.
+## Entender qué se publica
 
-The Terraform deployment requires an immutable `api_image` digest, an existing least-privilege service account and an externally populated `megaticketing-runtime` Secret. The Secret must provide `DATABASE_URL`, `JWT_SECRET`, `JWT_ISSUER`, `JWT_AUDIENCE`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` and `REDIS_PASSWORD`. Set redis_host to a private endpoint reachable from the API pods. The deployment exposes `/health/live` and `/health/ready` as liveness and readiness gates and owns the HPA. A future apply still needs provider credentials, environment approval and a tested rollback procedure.
+La web consulta eventos y solicita reservas con acceso verificado. La API crea intenciones de pago y recibe avisos firmados de Stripe. El repositorio todavía no contiene el formulario de pago, el registro de cuentas, la recuperación de contraseñas ni la emisión de entradas.
 
-The application runtime contract is limited to reservation, payment-intent creation, and signed webhook handling. This repository does not claim to provide a frontend Stripe checkout flow.
+El consumidor de eventos registra y confirma lo recibido. No envía correos ni liquida pagos. Esas acciones necesitan una integración que soporte entregas repetidas antes de usarse con compradores reales.
 
-## Database migration boundary
+## Elegir la forma de arrancar
 
-New databases use `npm run db:migrate` (Prisma migrate deploy). The initial migration records the former main schema; the second migration adds durable payment history, backfills existing payment bindings, and adds outbox claim ownership. CI applies these migrations to an empty PostgreSQL database before running integration tests.
+Compose inicia la base de datos y Redis, ejecuta las migraciones y espera a que terminen antes de iniciar la API. El gateway sirve la web en `/` y dirige `/api` al servidor.
 
-For an existing database created with db push, first take a recoverable backup, stop application writers, and compare the live schema with the initial migration. Only when they match, mark `202609100001_initial` as already applied using Prisma migrate resolve, then run migrate deploy. Do not run the initial CREATE TABLE migration blindly over existing data. A database already changed by an unmerged branch may differ; reconcile that schema before baselining. This review does not execute migrations against production.
+En Kubernetes se usa Terraform. No existe un chart Helm. CI valida los archivos, pero no ejecuta Terraform apply, publica imágenes ni despliega recursos.
 
-Compose runs a one-shot migration service and starts the API only when migration succeeds. The gateway serves the web at `/` and strips `/api/` before forwarding to Fastify. Configure Stripe for `/api/webhook` at the gateway and subscribe to `payment_intent.succeeded`. Direct API access uses `/webhook`. Issuer, audience, JWT and Stripe secrets must be supplied. Redis append-only persistence is enabled; PostgreSQL remains authoritative.
+## Preparar la configuración privada
 
-PaymentAttempt retains old reservation identity. An old successful payment cannot mark a new buyer's reservation paid: it records REFUND_PENDING and retries the Stripe refund with a stable idempotency key. Refund completion is mirrored into the current Ticket only when its PaymentIntent still matches. Repeated deliveries are expected. No external payment or refund was performed in repository tests.
+La instalación de Kubernetes necesita una imagen identificada por digest, una cuenta de servicio existente y el Secret `megaticketing-runtime` preparado fuera de Terraform. Su contenido debe incluir:
 
-The stream consumer records and deduplicates order events; it does not implement ticket issuance, email delivery or settlement. Add downstream effects and their deduplication transaction before treating it as fulfillment. Monitor pending outbox rows, stream pending entries and PaymentAttempt REFUND_PENDING; configure retention only after consumers acknowledge events.
+- `DATABASE_URL`
+- `JWT_SECRET`, `JWT_ISSUER` y `JWT_AUDIENCE`
+- `STRIPE_SECRET_KEY` y `STRIPE_WEBHOOK_SECRET`
+- `REDIS_PASSWORD`
+
+Configura `redis_host` con una dirección privada accesible desde la API. Los valores de firma y las claves de Stripe pertenecen al servidor. No se entregan a la web.
+
+Para desplegar hace falta revisar el estado de Terraform, las credenciales, la aprobación del entorno y cómo volver a una versión anterior. Los archivos de este repositorio no prueban que esos recursos ya existan en una cuenta cloud.
+
+## Preparar la base de datos
+
+Una base nueva usa `npm run db:migrate`. La primera migración crea el esquema inicial. La siguiente conserva el historial de pagos y añade la propiedad de las reclamaciones de eventos. CI comprueba esas migraciones en una base vacía.
+
+Si la base ya se creó mediante `db push`, primero prepara una copia recuperable y detén las escrituras. Compara su esquema con la migración inicial. Solo si coinciden, marca `202609100001_initial` como aplicada con `prisma migrate resolve` y ejecuta después las migraciones pendientes. No ejecutes los CREATE TABLE iniciales a ciegas sobre datos existentes.
+
+Si una rama anterior ya modificó la base, resuelve esa diferencia antes de marcar migraciones. Una prueba en una base vacía no valida automáticamente ese caso.
+
+## Conectar pagos
+
+Con gateway, el destino del aviso de Stripe es `/api/webhook`; con acceso directo a la API es `/webhook`. Se procesa `payment_intent.succeeded` y se exige una firma válida.
+
+Un pago se vincula a una reserva concreta con su importe y moneda. Si llega después de vencer, se conserva como reembolso pendiente. `PaymentAttempt` mantiene la identidad de reservas antiguas para que un pago atrasado no marque como pagado el asiento de otra persona.
+
+Los reintentos de devolución usan una clave estable. El resultado solo se copia al ticket actual si todavía corresponde a ese pago. Las entregas repetidas son parte del comportamiento esperado.
+
+## Comprobar que puede atender
+
+`/health/live` comprueba que el proceso responde. `/health/ready` exige una consulta SQL correcta y una respuesta de Redis. No confundan esas comprobaciones con una compra completa de extremo a extremo.
+
+Supervisa los eventos pendientes de la tabla outbox, los mensajes pendientes del stream y los pagos con `REFUND_PENDING`. Conserva los datos hasta que los consumidores hayan confirmado las entregas correspondientes. Redis usa persistencia append-only en Compose y PostgreSQL sigue siendo la autoridad de reservas y pagos.
+
+[Configuración de infraestructura](../infra/README.md) · [Funcionamiento del servidor](ARCHITECTURE.md)
