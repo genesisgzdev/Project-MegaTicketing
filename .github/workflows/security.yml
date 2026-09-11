@@ -32,8 +32,9 @@ jobs:
       - name: Start production image against real dependencies
         run: |
           docker run --detach --name megaticketing-smoke --network host \
-            -e NODE_ENV=test -e STRIPE_SECRET_KEY=sk_test_ci \
+            -e NODE_ENV=production -e STRIPE_SECRET_KEY=sk_test_ci \
             -e JWT_SECRET=ci-only-secret-that-is-at-least-32-characters \
+            -e JWT_ISSUER=ci -e JWT_AUDIENCE=ci-api \
             -e DATABASE_URL=postgresql://postgres:password@localhost:5432/megaticketing \
             -e REDIS_HOST=localhost -e REDIS_PORT=6379 \
             megaticketing-api:${{ github.sha }}
