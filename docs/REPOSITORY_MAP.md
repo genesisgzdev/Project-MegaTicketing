@@ -66,6 +66,7 @@ Los módulos game-state/HealthController/HealthService, metrics.ts, redis-enhanc
 | [apps/api/src/payments.ts](../apps/api/src/payments.ts) | Módulo: payments |
 | [apps/api/src/redis-enhanced.ts](../apps/api/src/redis-enhanced.ts) | Módulo: redis-enhanced |
 | [apps/api/src/redis.ts](../apps/api/src/redis.ts) | Módulo: redis |
+| [apps/api/src/redis-circuit-breaker.ts](../apps/api/src/redis-circuit-breaker.ts) | Reintentos y circuito sin conexiones al importar |
 | [apps/api/src/request-context.ts](../apps/api/src/request-context.ts) | Módulo: request-context |
 | [apps/api/src/services/fraud.service.ts](../apps/api/src/services/fraud.service.ts) | Módulo: fraud.service |
 | [apps/api/src/services/health.service.ts](../apps/api/src/services/health.service.ts) | Módulo: health.service |
