@@ -1,6 +1,8 @@
 import { FastifyBaseLogger } from 'fastify';
-import redis from '../redis';
+import redis, { waitForRedisReady } from '../redis';
 import { db } from '../db';
+import { randomUUID } from 'node:crypto';
+import { setTimeout as pause } from 'node:timers/promises';
 import { Prisma } from '@mega-ticketing/database';
 
 type ClaimedOutboxEvent = {
@@ -10,7 +12,6 @@ type ClaimedOutboxEvent = {
   payload: Prisma.JsonValue;
 };
 
-const OUTBOX_CLAIM_LEASE_MS = 60_000;
 
 export function decodeStreamPayload(fields: string[]): Record<string, unknown> {
   const values: Record<string, string> = {};
@@ -25,18 +26,57 @@ export function decodeStreamPayload(fields: string[]): Record<string, unknown> {
   };
 }
 
+function decodeStreamEnvelope(fields: string[]): { outboxId?: string; payload: Record<string, unknown> } {
+  const values: Record<string, string> = {};
+  for (let index = 0; index + 1 < fields.length; index += 2) values[fields[index]] = fields[index + 1];
+  const payload = values.payload ? JSON.parse(values.payload) as Record<string, unknown> : {};
+  return { outboxId: values.outboxId, payload: { ...payload, eventType: values.eventType, aggregateId: values.aggregateId } };
+}
+
 export class PubSubService {
   private readonly streamName = 'stream:orders:reserved';
   private readonly groupName = 'order_processors';
   private readonly consumerName = `node_${process.pid}_${Date.now()}`;
 
+  private running = false;
+  private readonly shutdown = new AbortController();
+  // BLOCK must never share the connection used by API locks and health checks.
+  private readonly reader = redis.duplicate({ maxRetriesPerRequest: 1, commandTimeout: 7000 });
+  private tasks: Promise<void>[] = [];
+
   constructor(private logger: FastifyBaseLogger) {
-    void this.initConsumerGroup();
-    const publisher = setInterval(() => void this.publishOutboxBatch(), 1000);
-    publisher.unref();
+    this.reader.on('error', (err) => this.logger.warn({ err }, 'Stream connection error'));
+  }
+
+  async start() {
+    if (this.running) return;
+    await Promise.all([waitForRedisReady(redis), waitForRedisReady(this.reader), db.$connect()]);
+    try {
+      await redis.xgroup('CREATE', this.streamName, this.groupName, '0', 'MKSTREAM');
+    } catch (err) {
+      if (!(err instanceof Error) || !err.message.includes('BUSYGROUP')) throw err;
+    }
+    this.running = true;
+    this.tasks = [this.consumeLoop(), this.periodic(() => this.publishOutboxBatch(), 1000),
+      this.periodic(() => this.recoverPending(), 30000)];
+  }
+
+  async stop() {
+    this.running = false;
+    this.shutdown.abort();
+    this.reader.disconnect();
+    await Promise.allSettled(this.tasks);
+  }
+
+  private async periodic(work: () => Promise<void>, interval: number) {
+    while (this.running) {
+      await work();
+      await pause(interval, undefined, { signal: this.shutdown.signal }).catch(() => undefined);
+    }
   }
 
   private async publishOutboxBatch() {
+    const publishingToken = randomUUID();
     try {
       // Claim rows atomically so three API replicas cannot publish the same
       // pending event at the same time. An expired claim is recoverable after
@@ -52,7 +92,7 @@ export class PubSubService {
           FOR UPDATE SKIP LOCKED
         )
         UPDATE "OutboxEvent" AS event
-        SET "publishingAt" = NOW()
+        SET "publishingAt" = NOW(), "publishingToken" = ${publishingToken}
         FROM candidates
         WHERE event."id" = candidates."id"
         RETURNING event."id", event."type", event."aggregateId", event."payload"
@@ -69,13 +109,13 @@ export class PubSubService {
             'payload', JSON.stringify(event.payload),
           );
           await db.outboxEvent.updateMany({
-            where: { id: event.id, publishedAt: null },
-            data: { publishedAt: new Date(), publishingAt: null },
+            where: { id: event.id, publishedAt: null, publishingToken },
+            data: { publishedAt: new Date(), publishingAt: null, publishingToken: null },
           });
         } catch (err: unknown) {
           await db.outboxEvent.updateMany({
-            where: { id: event.id, publishedAt: null },
-            data: { attempts: { increment: 1 }, lastError: String(err), publishingAt: null },
+            where: { id: event.id, publishedAt: null, publishingToken },
+            data: { attempts: { increment: 1 }, lastError: String(err), publishingAt: null, publishingToken: null },
           }).catch(() => undefined);
           this.logger.error({ err, outboxId: event.id }, 'Outbox publication failed; event remains durable');
         }
@@ -85,50 +125,45 @@ export class PubSubService {
     }
   }
 
-  private async initConsumerGroup() {
-    for (let attempt = 0; attempt < 10; attempt += 1) {
-      try {
-        await redis.xgroup('CREATE', this.streamName, this.groupName, '0', 'MKSTREAM');
-        this.logger.info(`Consumer Group '${this.groupName}' initialized on '${this.streamName}'`);
-        this.consumeLoop();
-        this.recoveryLoop();
-        return;
-      } catch (err: unknown) {
-        const error = err as Error;
-        if (error.message.includes('BUSYGROUP')) {
-          this.consumeLoop();
-          this.recoveryLoop();
-          return;
-        }
-        this.logger.warn({ attempt, err: error }, 'Redis stream group not ready; retrying');
-        await new Promise((resolve) => setTimeout(resolve, Math.min(1000 * (attempt + 1), 5000)));
-      }
+  private async processMessage(messageId: string, fields: string[]) {
+    const envelope = decodeStreamEnvelope(fields);
+    if (!envelope.outboxId) {
+      this.logger.warn({ messageId }, 'Ignoring stream event without outboxId');
+      return;
     }
-    this.logger.error('Redis stream consumer disabled after initialization retries');
+    try {
+      await db.processedOrderEvent.create({ data: { id: envelope.outboxId } });
+    } catch (err: unknown) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        this.logger.info({ messageId, outboxId: envelope.outboxId }, 'Skipping duplicate order event');
+        return;
+      }
+      throw err;
+    }
+    this.logger.info({ messageId, outboxId: envelope.outboxId, payload: envelope.payload }, 'Order event recorded');
   }
 
   private async consumeLoop() {
-    while (true) {
+    while (this.running) {
       try {
-        const result = await (redis.xreadgroup as any)('GROUP', this.groupName, this.consumerName, 'BLOCK', 5000, 'COUNT', 10, 'STREAMS', this.streamName, '>');
+        const result = await (this.reader.xreadgroup as any)('GROUP', this.groupName, this.consumerName, 'BLOCK', 1000, 'COUNT', 10, 'STREAMS', this.streamName, '>');
         if (result) {
           const messages = result[0][1];
           for (const message of messages) {
             const [messageId, fields] = message;
-            const payload = decodeStreamPayload(fields as string[]);
-            this.logger.info({ messageId, payload }, 'Processing reserved order...');
+            await this.processMessage(messageId, fields as string[]);
             await redis.xack(this.streamName, this.groupName, messageId);
           }
         }
       } catch (err) {
+        if (!this.running) break;
         this.logger.error(err, 'Stream consumer error');
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        await pause(2000, undefined, { signal: this.shutdown.signal }).catch(() => undefined);
       }
     }
   }
 
-  private async recoveryLoop() {
-    setInterval(async () => {
+  private async recoverPending() {
       try {
         const pending = await redis.xpending(this.streamName, this.groupName, '-', '+', 100);
         for (const p of pending) {
@@ -137,8 +172,7 @@ export class PubSubService {
             this.logger.warn({ messageId, consumer, idleTime }, 'Claiming orphaned message');
             const claimed = await redis.xclaim(this.streamName, this.groupName, this.consumerName, 60000, messageId);
             if (claimed && claimed.length > 0) {
-              const payload = decodeStreamPayload(claimed[0][1] as string[]);
-              this.logger.info({ messageId, payload }, 'Processing recovered order...');
+              await this.processMessage(messageId, claimed[0][1] as string[]);
               await redis.xack(this.streamName, this.groupName, messageId);
             }
           }
@@ -146,6 +180,5 @@ export class PubSubService {
       } catch (err) {
         this.logger.error(err, 'DLQ recovery error');
       }
-    }, 30000);
   }
 }

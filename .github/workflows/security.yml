@@ -8,8 +8,8 @@ jobs:
   audit-build-test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version: 22
           cache: npm
@@ -21,10 +21,8 @@ jobs:
         run: npm audit --audit-level=moderate
       - name: Compile every workspace
         run: npm run build
-      - name: Build API production image
-        run: docker build --tag megaticketing-api:${{ github.sha }} .
-      - name: Push integration schema
-        run: npm run db:push -- --accept-data-loss
+      - name: Apply versioned integration migrations
+        run: npm run db:migrate
         env:
           DATABASE_URL: postgresql://postgres:password@localhost:5432/megaticketing
       - name: Run web tests
@@ -41,6 +39,22 @@ jobs:
           AUTH_TEST_BYPASS: 'true'
           STRIPE_SECRET_KEY: sk_test_ci
           JWT_SECRET: ci-only-secret-that-is-at-least-32-characters
+      - name: Build API production image
+        run: docker build --tag megaticketing-api:${{ github.sha }} .
+      - name: Build web production image
+        run: docker build --file apps/web/Dockerfile --tag megaticketing-web:${{ github.sha }} .
+      - name: Start production image against real dependencies
+        run: |
+          docker run --detach --name megaticketing-smoke --network host \
+            -e NODE_ENV=production -e STRIPE_SECRET_KEY=sk_test_ci \
+            -e JWT_SECRET=ci-only-secret-that-is-at-least-32-characters \
+            -e JWT_ISSUER=ci -e JWT_AUDIENCE=ci-api \
+            -e DATABASE_URL=postgresql://postgres:password@localhost:5432/megaticketing \
+            -e REDIS_HOST=localhost -e REDIS_PORT=6379 \
+            megaticketing-api:${{ github.sha }}
+          trap 'docker logs megaticketing-smoke; docker rm -f megaticketing-smoke' EXIT
+          curl --fail --retry 20 --retry-connrefused --retry-delay 1 http://localhost:3001/health/ready
+          curl --fail http://localhost:3001/events
     services:
       postgres:
         image: postgres:16-alpine

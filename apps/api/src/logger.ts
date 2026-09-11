@@ -1,10 +1,11 @@
 import pino, { Logger } from 'pino';
 
 const isProduction = process.env.NODE_ENV === 'production';
+const pretty = (process.env.NODE_ENV ?? 'development') === 'development';
 
 export const logger: Logger = pino({
   level: process.env.LOG_LEVEL || (isProduction ? 'info' : 'debug'),
-  transport: isProduction
+  transport: !pretty
     ? undefined
     : {
         target: 'pino-pretty',

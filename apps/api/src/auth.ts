@@ -13,6 +13,8 @@ export async function authenticateUser(request: FastifyRequest, userId: string):
       new TextEncoder().encode(config.JWT_SECRET),
       {
         algorithms: ['HS256'],
+        // A signed token without an expiry would otherwise be valid forever.
+        requiredClaims: ['exp', 'sub'],
         ...(config.JWT_ISSUER ? { issuer: config.JWT_ISSUER } : {}),
         ...(config.JWT_AUDIENCE ? { audience: config.JWT_AUDIENCE } : {}),
       },

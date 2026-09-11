@@ -67,6 +67,11 @@ model ProcessedWebhookEvent {
   processedAt DateTime @default(now())
 }
 
+model ProcessedOrderEvent {
+  id          String   @id
+  processedAt DateTime @default(now())
+}
+
 model OutboxEvent {
   id          String    @id @default(uuid())
   type        String
@@ -75,6 +80,7 @@ model OutboxEvent {
   createdAt   DateTime  @default(now())
   publishedAt DateTime?
   publishingAt DateTime?
+  publishingToken String?
   attempts    Int       @default(0)
   lastError   String?
 
@@ -85,4 +91,29 @@ enum TicketStatus {
   LOCKED
   PAID
   CANCELLED
+}
+
+// Durable payment identity survives the reuse of a Ticket reservation row.
+model PaymentAttempt {
+  id                   String @id
+  eventId              String
+  seatId               String
+  userId               String
+  ticketId             String
+  reservationCreatedAt DateTime
+  amountMinor          Int
+  currency             String
+  status               PaymentAttemptStatus @default(PENDING)
+  refundId             String? @unique
+  createdAt            DateTime @default(now())
+
+  @@index([seatId, reservationCreatedAt])
+  @@index([status, createdAt])
+}
+
+enum PaymentAttemptStatus {
+  PENDING
+  PAID
+  REFUND_PENDING
+  REFUNDED
 }

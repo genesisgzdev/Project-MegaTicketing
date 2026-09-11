@@ -4,7 +4,8 @@
   "main": "dist/index.js",
   "scripts": {
     "db:generate": "prisma generate",
-    "db:push": "prisma db push"
+    "db:push": "prisma db push",
+    "db:migrate": "prisma migrate deploy"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0"

@@ -1,13 +1,12 @@
-﻿import './tracing';
+import tracing from './tracing';
+import { setupGracefulShutdown } from './graceful-shutdown';
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
-import websocket from '@fastify/websocket';
 import rateLimit from '@fastify/rate-limit';
 import metrics from 'fastify-metrics';
 import { config } from './config';
 import redis from './redis';
 import { ReservationController } from './controllers/reservation.controller';
-import { SecurityController } from './controllers/security.controller';
 import { WebhookController } from './controllers/webhook.controller';
 import { setupHealthCheck } from './health-check';
 import { db } from './db';
@@ -16,12 +15,15 @@ import { setupErrorHandler } from './error-handler';
 import { SeatmapController } from './controllers/seatmap.controller';
 import { PaymentController } from './controllers/payment.controller';
 import { setupIdempotency } from './idempotency';
+import { PubSubService } from './services/pubsub.service';
 
 /**
  * API Entrypoint.
  * Architecture: Controller/Service Pattern with Redis Locking.
  */
-const server = Fastify({ 
+const server = Fastify({
+  trustProxy: config.TRUST_PROXY ? config.TRUST_PROXY.split(',').map(value => value.trim()) : false,
+  requestTimeout: 30000,
   logger: {
     level: config.NODE_ENV === 'production' ? 'info' : 'debug'
   } 
@@ -32,7 +34,6 @@ setupIdempotency(server, redis);
 
 const allowedOrigins = config.CORS_ORIGINS.split(',').map((origin) => origin.trim()).filter(Boolean);
 server.register(cors, { origin: allowedOrigins });
-server.register(websocket);
 
 // Prometheus Instrumentation: Metrics exposure at /metrics
 server.register(metrics, { endpoint: '/metrics' });
@@ -51,7 +52,7 @@ server.register(rateLimit as any, {
  * Required for signature validation.
  */
 server.addContentTypeParser('application/json', { parseAs: 'buffer' }, (req, body, done) => {
-  if (req.url === '/webhook') {
+  if (req.url.split('?')[0] === '/webhook') {
     done(null, body);
   } else {
     try {
@@ -71,25 +72,31 @@ server.addContentTypeParser('application/json', { parseAs: 'buffer' }, (req, bod
 server.register(async (app) => {
   const reservationController = new ReservationController(app);
   const webhookController = new WebhookController(app);
-  const securityController = new SecurityController(app);
   const seatmapController = new SeatmapController();
   const paymentController = new PaymentController();
 
   // REST Interface
   app.post('/reserve', (req, rep) => reservationController.handleReservation(req, rep));
+  app.get('/events', (req, rep) => seatmapController.listEvents(req, rep));
   app.get('/events/:eventId/seats', (req, rep) => seatmapController.listSeats(req, rep));
   app.post('/payments/intents', (req, rep) => paymentController.createIntent(req, rep));
   app.post('/webhook', (req, rep) => webhookController.handleStripeWebhook(req, rep));
 
-  // Real-time WebSocket endpoint
-  app.get('/ws', { websocket: true }, (connection: { socket: import('ws').WebSocket }, request) => {
-    const adminToken = request.headers['x-admin-token'];
-    const canControlDefense = Boolean(config.WS_ADMIN_TOKEN && adminToken === config.WS_ADMIN_TOKEN);
-    securityController.handleConnection(connection, canControlDefense);
-  });
 });
 
 setupHealthCheck(server, db, redis);
+
+// The outbox publisher is part of the API process lifecycle. Without an
+// instance here, reservations remain durable in PostgreSQL but never reach
+// the stream. Each replica claims rows with SKIP LOCKED, so starting one
+// publisher per API process is safe.
+const events = new PubSubService(server.log);
+server.addHook('onReady', () => events.start());
+server.addHook('onClose', async () => {
+  await events.stop();
+  await tracing.shutdown();
+});
+setupGracefulShutdown(server, db, redis);
 
 /**
  * Global Error Handler.

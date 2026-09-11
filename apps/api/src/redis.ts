@@ -64,7 +64,7 @@ class RedisSeatLease {
 const redis = new Redis({
   host: config.REDIS_HOST, port: config.REDIS_PORT, password: config.REDIS_PASSWORD,
   retryStrategy: (times) => Math.min(times * 50, 2000),
-  maxRetriesPerRequest: null, enableOfflineQueue: false
+  maxRetriesPerRequest: 1, commandTimeout: 5000, enableOfflineQueue: false
 });
 
 redis.on('error', (err) => console.error('CRITICAL: Redis Connection Lost', err));
@@ -80,3 +80,20 @@ export const releaseSeat = async (eventId: string, seatId: string, lockToken: st
 };
 
 export default redis;
+
+export function waitForRedisReady(client: Redis, timeoutMs = 5000): Promise<void> {
+  if (client.status === 'ready') return Promise.resolve();
+  if (client.status === 'end') return Promise.reject(new Error('Redis connection is closed'));
+  return new Promise((resolve, reject) => {
+    const cleanup = () => {
+      clearTimeout(timer);
+      client.removeListener('ready', ready);
+      client.removeListener('end', ended);
+    };
+    const ready = () => { cleanup(); resolve(); };
+    const ended = () => { cleanup(); reject(new Error('Redis connection closed during startup')); };
+    const timer = setTimeout(() => { cleanup(); reject(new Error('Redis readiness timeout')); }, timeoutMs);
+    client.once('ready', ready);
+    client.once('end', ended);
+  });
+}

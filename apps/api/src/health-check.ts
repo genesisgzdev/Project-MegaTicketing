@@ -1,5 +1,6 @@
 import { FastifyInstance } from 'fastify';
 import { Redis } from 'ioredis';
+import { getHeapStatistics } from 'node:v8';
 import { PrismaClient } from '@prisma/client';
 
 export interface HealthStatus {
@@ -17,6 +18,7 @@ export async function setupHealthCheck(
   db: PrismaClient,
   redis: Redis,
 ) {
+  app.get('/health/live', async () => ({ live: true }));
   app.get('/health', async (request, reply) => {
     const checks = await Promise.all([
       checkDatabase(db),
@@ -44,10 +46,10 @@ export async function setupHealthCheck(
 
   app.get('/health/ready', async (request, reply) => {
     try {
-      await Promise.all([db.$queryRaw`SELECT 1`, redis.ping()]);
+      await Promise.all([bounded(db.$queryRaw`SELECT 1`), bounded(redis.ping())]);
       reply.send({ ready: true });
     } catch (error) {
-      reply.status(503).send({ ready: false, error: error.message });
+      reply.status(503).send({ ready: false, error: 'Dependency unavailable' });
     }
   });
 }
@@ -55,7 +57,7 @@ export async function setupHealthCheck(
 async function checkDatabase(db: PrismaClient) {
   const start = Date.now();
   try {
-    await db.$queryRaw`SELECT 1`;
+    await bounded(db.$queryRaw`SELECT 1`);
     return {
       status: 'healthy',
       latency: Date.now() - start,
@@ -71,7 +73,7 @@ async function checkDatabase(db: PrismaClient) {
 async function checkRedis(redis: Redis) {
   const start = Date.now();
   try {
-    await redis.ping();
+    await bounded(redis.ping());
     return {
       status: 'healthy',
       latency: Date.now() - start,
@@ -86,11 +88,20 @@ async function checkRedis(redis: Redis) {
 
 function checkMemory() {
   const used = process.memoryUsage();
-  const heapUsedPercent = (used.heapUsed / used.heapTotal) * 100;
+  const heapUsedPercent = (used.heapUsed / getHeapStatistics().heap_size_limit) * 100;
   const status = heapUsedPercent > 90 ? 'unhealthy' : heapUsedPercent > 75 ? 'degraded' : 'healthy';
 
   return {
     status,
     percentage: Math.round(heapUsedPercent),
   };
+}
+
+async function bounded<T>(operation: PromiseLike<T>): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>;
+  try {
+    return await Promise.race([Promise.resolve(operation), new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error('Dependency timeout')), 2000);
+    })]);
+  } finally { clearTimeout(timer!); }
 }

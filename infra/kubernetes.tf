@@ -1,4 +1,4 @@
-﻿resource "kubernetes_namespace" "production" {
+resource "kubernetes_namespace" "production" {
   metadata {
     name = "megaticketing-prod"
   }
@@ -51,8 +51,13 @@ resource "kubernetes_deployment" "api" {
             value = "3001"
           }
 
+          env {
+            name  = "REDIS_HOST"
+            value = var.redis_host
+          }
+
           dynamic "env" {
-            for_each = toset(["DATABASE_URL", "JWT_SECRET", "STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET", "REDIS_PASSWORD"])
+            for_each = toset(["DATABASE_URL", "JWT_SECRET", "JWT_ISSUER", "JWT_AUDIENCE", "STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET", "REDIS_PASSWORD"])
             content {
               name = env.value
               value_from {
@@ -66,7 +71,7 @@ resource "kubernetes_deployment" "api" {
 
           liveness_probe {
             http_get {
-              path = "/health"
+              path = "/health/live"
               port = 3001
             }
             initial_delay_seconds = 20

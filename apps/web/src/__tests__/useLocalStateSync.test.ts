@@ -55,6 +55,7 @@ describe('useLocalStateSync', () => {
       result.current.clear();
     });
 
+    vi.advanceTimersByTime(1000);
     expect(localStorage.getItem('user_state')).toBeNull();
   });
 });

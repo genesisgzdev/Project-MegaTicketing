@@ -12,15 +12,6 @@ afterEach(() => {
   cleanup();
 });
 
-// Mock WebSocket
-global.WebSocket = vi.fn(() => ({
-  addEventListener: vi.fn(),
-  removeEventListener: vi.fn(),
-  send: vi.fn(),
-  close: vi.fn(),
-  readyState: 0,
-})) as any;
-
 // Mock localStorage
 const localStorageMock = (() => {
   let store: Record<string, string> = {};

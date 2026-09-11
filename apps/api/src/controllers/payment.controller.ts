@@ -4,6 +4,7 @@ import { authenticateUser } from '../auth';
 import { db } from '../db';
 import { createPaymentIntent, toMinorUnits } from '../payments';
 import { config } from '../config';
+import { ReservationService } from '../services/reservation.service';
 
 const PaymentSchema = z.object({
   eventId: z.string().uuid(),
@@ -38,11 +39,15 @@ export class PaymentController {
       userId: input.userId,
       amountMinor: String(amountMinor),
       currency,
+      reservationKey: `${ticket.id}:${ticket.createdAt.toISOString()}`,
     });
-    await db.ticket.updateMany({
-      where: { id: ticket.id, status: 'LOCKED', userId: input.userId },
-      data: { paymentIntentId: paymentIntent.id, paymentAmountMinor: amountMinor, paymentCurrency: currency },
+    const bound = await new ReservationService().bindPaymentIntent({
+      id: paymentIntent.id, amountMinor, currency, eventId: input.eventId, seatId: input.seatId,
+      userId: input.userId, ticketId: ticket.id, reservationCreatedAt: ticket.createdAt,
     });
+    if (!bound) {
+      return reply.status(409).send({ status: 'error', message: 'Reservation changed before payment binding completed' });
+    }
     return reply.status(201).send({
       status: 'success',
       data: { paymentIntentId: paymentIntent.id, clientSecret: paymentIntent.client_secret },
