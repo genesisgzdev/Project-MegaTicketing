@@ -1,5 +1,5 @@
 import { FastifyBaseLogger } from 'fastify';
-import redis from '../redis';
+import redis, { waitForRedisReady } from '../redis';
 import { db } from '../db';
 import { randomUUID } from 'node:crypto';
 import { setTimeout as pause } from 'node:timers/promises';
@@ -50,6 +50,7 @@ export class PubSubService {
 
   async start() {
     if (this.running) return;
+    await Promise.all([waitForRedisReady(redis), waitForRedisReady(this.reader), db.$connect()]);
     try {
       await redis.xgroup('CREATE', this.streamName, this.groupName, '0', 'MKSTREAM');
     } catch (err) {

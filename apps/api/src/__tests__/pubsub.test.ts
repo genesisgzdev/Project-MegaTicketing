@@ -16,3 +16,23 @@ describe('Redis Stream payload decoding', () => {
       .toEqual({ seatId: 'seat-1' });
   });
 });
+
+import { EventEmitter } from 'node:events';
+import { waitForRedisReady } from '../redis';
+import type Redis from 'ioredis';
+it('waits for actual readiness and removes startup listeners', async () => {
+  const client = Object.assign(new EventEmitter(), { status: 'connecting' });
+  let completed = false;
+  const waiting = waitForRedisReady(client as unknown as Redis).then(() => { completed = true; });
+  await Promise.resolve();
+  expect(completed).toBe(false);
+  client.status = 'ready'; client.emit('ready');
+  await waiting;
+  expect(completed).toBe(true);
+  expect(client.listenerCount('end')).toBe(0);
+});
+it('bounds startup waiting when the connection never becomes ready', async () => {
+  const client = Object.assign(new EventEmitter(), { status: 'connecting' });
+  await expect(waitForRedisReady(client as unknown as Redis, 5)).rejects.toThrow(/timeout/);
+  expect(client.listenerCount('ready')).toBe(0);
+});

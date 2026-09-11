@@ -80,3 +80,20 @@ export const releaseSeat = async (eventId: string, seatId: string, lockToken: st
 };
 
 export default redis;
+
+export function waitForRedisReady(client: Redis, timeoutMs = 5000): Promise<void> {
+  if (client.status === 'ready') return Promise.resolve();
+  if (client.status === 'end') return Promise.reject(new Error('Redis connection is closed'));
+  return new Promise((resolve, reject) => {
+    const cleanup = () => {
+      clearTimeout(timer);
+      client.removeListener('ready', ready);
+      client.removeListener('end', ended);
+    };
+    const ready = () => { cleanup(); resolve(); };
+    const ended = () => { cleanup(); reject(new Error('Redis connection closed during startup')); };
+    const timer = setTimeout(() => { cleanup(); reject(new Error('Redis readiness timeout')); }, timeoutMs);
+    client.once('ready', ready);
+    client.once('end', ended);
+  });
+}
