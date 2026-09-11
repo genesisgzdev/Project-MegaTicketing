@@ -1,9 +1,13 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { RedisCircuitBreaker } from '../redis';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { RedisCircuitBreaker } from '../redis-circuit-breaker';
 
 describe('RedisCircuitBreaker', () => {
   beforeEach(() => {
     vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('should execute operation successfully when closed', async () => {

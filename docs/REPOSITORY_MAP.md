@@ -73,7 +73,7 @@ Los módulos game-state/HealthController/HealthService, metrics.ts, redis-enhanc
 | [apps/api/src/services/reservation.service.ts](../apps/api/src/services/reservation.service.ts) | Módulo: reservation.service |
 | [apps/api/src/tracing.ts](../apps/api/src/tracing.ts) | Módulo: tracing |
 | [apps/api/tsconfig.json](../apps/api/tsconfig.json) | Configuración/metadata: tsconfig.json |
-| [apps/api/vitest.config.ts](../apps/api/vitest.config.ts) | Validación: vitest.config |
+| [apps/api/vitest.config.mts](../apps/api/vitest.config.mts) | Validación: vitest.config |
 | [apps/api/vitest.setup.ts](../apps/api/vitest.setup.ts) | Validación: vitest.setup |
 | [apps/web/Dockerfile](../apps/web/Dockerfile) | Build y ejecución en contenedores |
 | [apps/web/index.html](../apps/web/index.html) | Configuración/metadata: index.html |

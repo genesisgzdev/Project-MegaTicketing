@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
-    "test": "vitest run --config vitest.config.ts",
+    "test": "vitest run --config vitest.config.mts",
     "start": "node dist/apps/api/src/index.js"
   },
   "dependencies": {
