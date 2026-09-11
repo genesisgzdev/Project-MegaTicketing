@@ -20,16 +20,12 @@ El consumidor convierte los pares de campos del stream a nombres (`outboxId`, `e
 
 ## Flujo de una reserva
 
-```text
-POST /reserve
-  -> lock temporal en Redis
-  -> UPDATE condicional del asiento en PostgreSQL
-  -> ticket LOCKED
-  -> evento outbox en PostgreSQL, dentro de la misma transacción
-  -> publicador reintentable hacia Redis Streams
-  -> PaymentIntent y webhook firmado de Stripe
-  -> ticket PAID
-```
+1. Validar identidad y adquirir un lease temporal en Redis.
+2. Bloquear la fila Seat en PostgreSQL y escribir Ticket LOCKED junto con el outbox.
+3. Publicar el outbox en Redis Streams mediante una reclamación con token.
+4. Crear y vincular un PaymentIntent a la generación de la reserva.
+5. Confirmar el webhook firmado: Ticket PAID si sigue vigente; refund pendiente si expiró o cambió de propietario.
+
 
 Health, métricas, idempotencia, reintentos del proveedor y reconciliación están descritos en el mapa técnico.
 
@@ -45,6 +41,7 @@ Necesitas Node 22 o superior, npm 10 y Docker.
 cp .env.example .env
 # Completa los secretos de Stripe y JWT en .env
 npm ci
+npm run db:generate
 npm run build
 npm test
 ```
@@ -54,8 +51,11 @@ Para levantar las dependencias:
 ```bash
 docker compose up -d db redis
 npm run db:generate
-npm run db:push
+node --env-file=.env node_modules/prisma/build/index.js migrate deploy --schema=packages/database/prisma/schema.prisma
+node --env-file=.env apps/api/dist/apps/api/src/index.js
 ```
+
+La web se inicia por separado con `npm run dev --workspace=@mega-ticketing/web` y usa `/api` a través del proxy de Vite. Para iniciar todo en contenedores, `docker compose up --build` aplica migraciones y sirve la web en `http://localhost`, con la API en `/api`. Para bases existentes revisa primero las instrucciones de baseline en `docs/DEPLOYMENT_PREFLIGHT.md`.
 
 La imagen de la API usa un build multi-stage y arranca con `apps/api/dist/apps/api/src/index.js`, que es la salida real del `tsconfig` actual. El contenedor no crea PostgreSQL ni Redis y necesita las variables de `.env.example` inyectadas por el entorno.
 
@@ -67,7 +67,7 @@ No pongas claves de producción en el repositorio ni uses valores de ejemplo par
 
 En producción el JWT debe incluir `iss` y `aud`, y la configuración exige `JWT_ISSUER` y `JWT_AUDIENCE`. La API limita el algoritmo a `HS256`, exige `sub` y `exp`, comprueba el sujeto contra el usuario de la operación y deja que `jose` valide `exp` y `nbf`. En desarrollo y pruebas issuer y audience pueden omitirse.
 
-`GET /events/:eventId/seats` devuelve el estado actual de cada asiento. La interfaz consume esa respuesta y no mantiene una copia fija de la disponibilidad.
+`GET /events` lista eventos próximos con paginación por cursor; la web permite elegir el evento sin recompilar. `GET /events/:eventId/seats` devuelve el estado actual de cada asiento. La interfaz consume esa respuesta y no mantiene una copia fija de la disponibilidad.
 
 `POST /payments/intents` solo trabaja con una reserva `LOCKED` vigente del usuario.
 
@@ -109,3 +109,11 @@ La arquitectura y las decisiones de seguridad están en [docs/ARCHITECTURE.md](d
 ## Licencia
 
 Apache License 2.0. Consulta [LICENSE](LICENSE).
+
+El inventario completo de archivos y flujos está en [docs/REPOSITORY_MAP.md](docs/REPOSITORY_MAP.md).
+
+## Cierre y consistencia operacional
+
+El lector bloqueante del stream tiene su propia conexión Redis. Publicación y recuperación no solapan ciclos; el cierre detiene esos trabajos antes de desconectar DB/Redis. Un publicador cuya reclamación expiró no puede limpiar la reclamación de otro. Las comprobaciones de salud tienen timeout; memoria se mide contra el límite del heap, no contra el tamaño momentáneo asignado.
+
+La caché de idempotencia consulta y reclama atómicamente; el lease expira tras 120 segundos y solo su propietario puede publicar la respuesta o liberarlo. Los webhooks usan su propia deduplicación durable. La selección de asientos en la web es una previsualización: no crea una reserva ni un cobro. La disponibilidad se vuelve a consultar y las selecciones vendidas o retenidas se eliminan.

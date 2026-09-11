@@ -64,7 +64,7 @@ class RedisSeatLease {
 const redis = new Redis({
   host: config.REDIS_HOST, port: config.REDIS_PORT, password: config.REDIS_PASSWORD,
   retryStrategy: (times) => Math.min(times * 50, 2000),
-  maxRetriesPerRequest: null, enableOfflineQueue: false
+  maxRetriesPerRequest: 1, commandTimeout: 5000, enableOfflineQueue: false
 });
 
 redis.on('error', (err) => console.error('CRITICAL: Redis Connection Lost', err));

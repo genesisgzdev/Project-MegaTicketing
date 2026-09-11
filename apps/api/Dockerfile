@@ -1,29 +1,31 @@
-# Stage 1: Build logic
-FROM node:22-alpine AS builder
-WORKDIR /usr/src/app
-RUN apk add --no-cache libc6-compat
+FROM node:22-bookworm-slim AS build
+WORKDIR /app
+RUN apt-get update && apt-get install -y --no-install-recommends openssl && rm -rf /var/lib/apt/lists/*
+COPY package*.json ./
+COPY apps/api/package.json apps/api/package.json
+COPY apps/web/package.json apps/web/package.json
+COPY packages/database/package.json packages/database/package.json
+COPY packages/shared/package.json packages/shared/package.json
+RUN npm ci --ignore-scripts
 COPY . .
-RUN npm install --ignore-scripts
-RUN npx prisma generate --schema=packages/database/prisma/schema.prisma
-RUN npx turbo run build --filter=@mega-ticketing/api
+RUN npm run db:generate && npm run build --workspace=@mega-ticketing/api
 
-# Stage 2: Hardened Runner
-FROM node:22-alpine AS runner
-WORKDIR /usr/src/app
+FROM build AS migrate
+CMD ["npm", "run", "db:migrate"]
+
+FROM build AS production-deps
+RUN npm prune --omit=dev --ignore-scripts
+
+FROM node:22-bookworm-slim AS runtime
 ENV NODE_ENV=production
-
-# [SECURITY FIX] Selective copying to prevent source code or .env leaks
-COPY --from=builder /usr/src/app/package*.json ./
-COPY --from=builder /usr/src/app/apps/api/package.json ./apps/api/
-COPY --from=builder /usr/src/app/apps/web/package.json ./apps/web/
-COPY --from=builder /usr/src/app/packages/database/package.json ./packages/database/
-COPY --from=builder /usr/src/app/packages/shared/package.json ./packages/shared/
-COPY --from=builder /usr/src/app/packages/database/prisma ./packages/database/prisma
-COPY --from=builder /usr/src/app/apps/api/dist ./apps/api/dist
-# Only install production dependencies for the workspace
-RUN npm install --omit=dev --ignore-scripts && npm cache clean --force
-RUN npx prisma generate --schema=packages/database/prisma/schema.prisma
-
+WORKDIR /app
+RUN apt-get update && apt-get install -y --no-install-recommends openssl && rm -rf /var/lib/apt/lists/*
+COPY --from=production-deps /app/node_modules ./node_modules
+COPY --from=build /app/package.json ./package.json
+COPY --from=build /app/apps/api/package.json ./apps/api/package.json
+COPY --from=build /app/packages/database/package.json ./packages/database/package.json
+COPY --from=build /app/apps/api/dist ./apps/api/dist
+COPY --from=build /app/apps/api/dist/packages/database/src/index.js ./packages/database/dist/index.js
 USER node
 EXPOSE 3001
-CMD ["node", "apps/api/dist/index.js"]
+CMD ["node", "apps/api/dist/apps/api/src/index.js"]

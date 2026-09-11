@@ -6,6 +6,18 @@ import { config } from '../config';
 const ParamsSchema = z.object({ eventId: z.string().uuid() });
 
 export class SeatmapController {
+  async listEvents(request: FastifyRequest, reply: FastifyReply) {
+    const query = z.object({ cursor: z.string().uuid().optional() }).safeParse(request.query);
+    if (!query.success) return reply.status(400).send({ message: 'Invalid event cursor' });
+    const events = await db.event.findMany({
+      where: { date: { gte: new Date() } }, orderBy: [{ date: 'asc' }, { id: 'asc' }], take: 51,
+      ...(query.data.cursor ? { cursor: { id: query.data.cursor }, skip: 1 } : {}),
+      select: { id: true, title: true, date: true },
+    });
+    const page = events.slice(0, 50);
+    return reply.send({ events: page, nextCursor: events.length > 50 ? page[49].id : null });
+  }
+
   async listSeats(request: FastifyRequest, reply: FastifyReply) {
     const params = ParamsSchema.safeParse(request.params);
     if (!params.success) return reply.status(400).send({ status: 'error', message: 'Invalid event id' });

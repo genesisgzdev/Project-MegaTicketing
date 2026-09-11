@@ -14,7 +14,7 @@ export function useLocalStateSync<T>(
   const debounceTimer = useRef<NodeJS.Timeout | null>(null);
   const serializer = options.serializer || JSON.stringify;
   const deserializer = options.deserializer || JSON.parse;
-  const debounceMs = options.debounceMs || 500;
+  const debounceMs = options.debounceMs ?? 500;
 
   // Sync state to localStorage with debouncing
   useEffect(() => {
@@ -49,7 +49,9 @@ export function useLocalStateSync<T>(
   }, [options.key, deserializer]);
 
   const clear = useCallback(() => {
-    localStorage.removeItem(options.key);
+    if (debounceTimer.current) clearTimeout(debounceTimer.current);
+    try { localStorage.removeItem(options.key); }
+    catch (error) { console.error('Failed to clear saved state', error); }
   }, [options.key]);
 
   return { restore, clear };

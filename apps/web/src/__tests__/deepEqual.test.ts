@@ -30,3 +30,14 @@ describe('isDeepEqual', () => {
     expect(isDeepEqual(null, undefined)).toBe(false);
   });
 });
+
+it('distinguishes dates, array shapes and cyclic changes', () => {
+  expect(isDeepEqual(new Date(0), new Date(1))).toBe(false);
+  expect(isDeepEqual([], {})).toBe(false);
+  expect(isDeepEqual(new Array(2), [])).toBe(false);
+  const a: any = { value: 1 }; a.self = a;
+  const b: any = { value: 1 }; b.self = b;
+  expect(isDeepEqual(a, b)).toBe(true);
+  b.value = 2;
+  expect(isDeepEqual(a, b)).toBe(false);
+});

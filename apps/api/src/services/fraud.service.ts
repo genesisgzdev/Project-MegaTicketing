@@ -1,4 +1,4 @@
-﻿import redis from '../redis';
+import redis from '../redis';
 
 /**
  * FraudService: Module for detecting suspicious reservation patterns.
@@ -8,7 +8,6 @@ export class FraudService {
   private readonly VELOCITY_LIMIT = 5;
   private readonly VELOCITY_WINDOW = 10; // seconds
   
-  private readonly EVENT_PRESSURE_LIMIT = 20;
   private readonly PATTERN_WINDOW = 10; // seconds
 
   /**
@@ -35,10 +34,12 @@ export class FraudService {
     const ipKey = `fraud:velocity:ip:${ip}:event:${eventId}`;
     const userKey = `fraud:velocity:user:${userId}:event:${eventId}`;
     
-    const [ipCount, userCount] = await Promise.all([redis.incr(ipKey), redis.incr(userKey)]);
-    
-    if (ipCount === 1) await redis.expire(ipKey, this.VELOCITY_WINDOW);
-    if (userCount === 1) await redis.expire(userKey, this.VELOCITY_WINDOW);
+    const increment = async (key: string) => Number(await redis.eval(`
+      local count = redis.call('incr', KEYS[1])
+      if count == 1 or redis.call('ttl', KEYS[1]) < 0 then redis.call('expire', KEYS[1], ARGV[1]) end
+      return count
+    `, 1, key, this.VELOCITY_WINDOW));
+    const [ipCount, userCount] = await Promise.all([increment(ipKey), increment(userKey)]);
 
     return ipCount > this.VELOCITY_LIMIT || userCount > this.VELOCITY_LIMIT;
   }
@@ -50,16 +51,10 @@ export class FraudService {
   private async recordEventPressure(eventId: string): Promise<void> {
     const key = `fraud:pattern:event:${eventId}`;
     
-    const count = await redis.incr(key);
-    
-    if (count === 1) {
-      await redis.expire(key, this.PATTERN_WINDOW);
-    }
-
-    if (count === this.EVENT_PRESSURE_LIMIT + 1) {
-      // Keep this signal available for metrics/operations without punishing every buyer.
-      await redis.expire(key, this.PATTERN_WINDOW);
-    }
+    await redis.eval(`
+      local count = redis.call('incr', KEYS[1])
+      if count == 1 or redis.call('ttl', KEYS[1]) < 0 then redis.call('expire', KEYS[1], ARGV[1]) end
+      return count
+    `, 1, key, this.PATTERN_WINDOW);
   }
 }
-

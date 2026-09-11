@@ -1,12 +1,12 @@
-﻿import { z } from 'zod';
+import { z } from 'zod';
 
 const configSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   AUTH_TEST_BYPASS: z.enum(['true', 'false']).default('false').transform((value) => value === 'true'),
-  PORT: z.coerce.number().default(3001),
+  PORT: z.coerce.number().int().min(1).max(65535).default(3001),
   SEAT_LOCK_TTL_MS: z.coerce.number().int().positive().default(30_000),
   REDIS_HOST: z.string().default('localhost'),
-  REDIS_PORT: z.coerce.number().default(6379),
+  REDIS_PORT: z.coerce.number().int().min(1).max(65535).default(6379),
   REDIS_PASSWORD: z.string().optional(),
   STRIPE_SECRET_KEY: z.string().min(1, 'Stripe secret key is required'),
   STRIPE_WEBHOOK_SECRET: z.string().optional(),
@@ -14,9 +14,10 @@ const configSchema = z.object({
   JWT_SECRET: z.string().min(32, 'JWT Secret must be at least 32 characters'),
   JWT_ISSUER: z.string().min(1).optional(),
   JWT_AUDIENCE: z.string().min(1).optional(),
+  TRUST_PROXY: z.string().optional(),
   GCP_PROJECT_ID: z.string().optional(),
   PUBSUB_ORDERS_TOPIC: z.string().default('orders-topic'),
-  CORS_ORIGINS: z.string().default('http://localhost:5173'),
+  CORS_ORIGINS: z.string().default('http://localhost:3000'),
   OTEL_EXPORTER_OTLP_ENDPOINT: z.string().url().default('http://localhost:4317'),
 }).superRefine((value, ctx) => {
   if (value.NODE_ENV !== 'production') return;

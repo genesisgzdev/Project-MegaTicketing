@@ -9,7 +9,7 @@ function cn(...inputs: ClassValue[]) {
 }
 
 export default function App() {
-  const apiBase = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+  const apiBase = import.meta.env.VITE_API_URL || '/api';
   const [logs, setLogs] = useState<Array<{ message: string; at: number }>>([]);
   const [health, setHealth] = useState<{
     status: string;
@@ -30,7 +30,7 @@ export default function App() {
         if (mounted) setHealth(payload);
       } catch (error) {
         if (mounted) setHealth(null);
-        addLog(`HEALTH: ${error instanceof Error ? error.message : 'unreachable'}`);
+        if (mounted) addLog(`HEALTH: ${error instanceof Error ? error.message : 'unreachable'}`);
       }
     };
     refreshHealth();
@@ -40,8 +40,8 @@ export default function App() {
 
   const statusLabel = health?.status?.toUpperCase() || 'UNREACHABLE';
   const statusClass = health?.status === 'healthy' ? 'text-emerald-400' : 'text-amber-400';
-  const apiLatency = health?.checks?.database?.latency ?? 0;
-  const memoryUsage = health?.checks?.memory?.percentage ?? 0;
+  const apiLatency = health?.checks?.database?.latency;
+  const memoryUsage = health?.checks?.memory?.percentage;
 
   return (
     <div className="min-h-screen bg-slate-950 p-8 font-sans selection:bg-indigo-500/30">
@@ -74,7 +74,7 @@ export default function App() {
       <main className="max-w-7xl mx-auto grid grid-cols-1 xl:grid-cols-12 gap-8">
         <section className="xl:col-span-9 relative">
           <div className="absolute top-6 left-6 z-20 flex items-center gap-2 bg-indigo-600 text-white text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest shadow-lg">
-            <Activity size={12} /> Infrastructure Topology
+            <Activity size={12} /> Live availability
           </div>
           <CyberArena />
         </section>
@@ -87,21 +87,21 @@ export default function App() {
             <div className="space-y-6">
               <div className="space-y-2">
                 <div className="flex justify-between text-[10px] font-bold uppercase text-slate-500 tracking-wider">
-                  <span>API Response</span>
-                  <span className={statusClass}>{apiLatency}ms</span>
+                  <span>Database latency</span>
+                  <span className={statusClass}>{apiLatency === undefined ? 'Unavailable' : `${apiLatency}ms`}</span>
                 </div>
                 <div className="w-full h-1 bg-slate-800 rounded-full overflow-hidden">
-                  <div className="h-full bg-emerald-500 shadow-[0_0_10px_#10b981]" style={{ width: `${Math.min(apiLatency * 2, 100)}%` }} />
+                  <div className="h-full bg-emerald-500 shadow-[0_0_10px_#10b981]" style={{ width: `${Math.min((apiLatency ?? 0) * 2, 100)}%` }} />
                 </div>
               </div>
               
               <div className="space-y-2">
                 <div className="flex justify-between text-[10px] font-bold uppercase text-slate-500 tracking-wider">
-                  <span>Memory Usage</span>
-                  <span className="text-indigo-400">{memoryUsage}%</span>
+                  <span>Heap limit usage</span>
+                  <span className="text-indigo-400">{memoryUsage === undefined ? 'Unavailable' : `${memoryUsage}%`}</span>
                 </div>
                 <div className="w-full h-1 bg-slate-800 rounded-full overflow-hidden">
-                  <div className="h-full bg-indigo-500 shadow-[0_0_10px_#6366f1]" style={{ width: `${memoryUsage}%` }} />
+                  <div className="h-full bg-indigo-500 shadow-[0_0_10px_#6366f1]" style={{ width: `${memoryUsage === undefined ? 'Unavailable' : `${memoryUsage}%`}` }} />
                 </div>
               </div>
 

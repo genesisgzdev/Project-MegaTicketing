@@ -1,4 +1,4 @@
-﻿
+
 
 variable "api_image" {
   description = "Immutable API image reference, including a sha256 digest."
@@ -20,4 +20,13 @@ variable "kubernetes_service_account_name" {
   description = "Existing least-privilege Kubernetes service account for the API."
   type        = string
   default     = "megaticketing-api"
+}
+
+variable "redis_host" {
+  description = "Reachable private Redis endpoint for API pods"
+  type        = string
+  validation {
+    condition     = length(var.redis_host) > 0 && var.redis_host != "localhost" && var.redis_host != "127.0.0.1"
+    error_message = "API pods need a reachable Redis endpoint, not loopback."
+  }
 }

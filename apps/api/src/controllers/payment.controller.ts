@@ -4,6 +4,7 @@ import { authenticateUser } from '../auth';
 import { db } from '../db';
 import { createPaymentIntent, toMinorUnits } from '../payments';
 import { config } from '../config';
+import { ReservationService } from '../services/reservation.service';
 
 const PaymentSchema = z.object({
   eventId: z.string().uuid(),
@@ -40,23 +41,11 @@ export class PaymentController {
       currency,
       reservationKey: `${ticket.id}:${ticket.createdAt.toISOString()}`,
     });
-    const binding = await db.ticket.updateMany({
-      // The ticket row is recycled when a lock expires. Keep the generation
-      // read before Stripe in the conditional update and never overwrite an
-      // already-bound intent. A late Stripe response then fails closed.
-      where: {
-        id: ticket.id,
-        status: 'LOCKED',
-        userId: input.userId,
-        createdAt: ticket.createdAt,
-        paymentIntentId: null,
-      },
-      data: { paymentIntentId: paymentIntent.id, paymentAmountMinor: amountMinor, paymentCurrency: currency },
+    const bound = await new ReservationService().bindPaymentIntent({
+      id: paymentIntent.id, amountMinor, currency, eventId: input.eventId, seatId: input.seatId,
+      userId: input.userId, ticketId: ticket.id, reservationCreatedAt: ticket.createdAt,
     });
-    if (binding.count !== 1) {
-      // Stripe may win a race with expiry or ticket recycling. Never return a
-      // client secret as if it were bound to a local reservation that changed
-      // before the conditional UPDATE committed.
+    if (!bound) {
       return reply.status(409).send({ status: 'error', message: 'Reservation changed before payment binding completed' });
     }
     return reply.status(201).send({

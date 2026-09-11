@@ -11,9 +11,12 @@ export function setupGracefulShutdown(
   redis: Redis,
 ) {
   const signals = ['SIGTERM', 'SIGINT'];
+  let closing = false;
 
   signals.forEach((signal) => {
     process.on(signal, async () => {
+      if (closing) return;
+      closing = true;
       logger.info(`Received ${signal}, starting graceful shutdown...`);
 
       const shutdownTimer = setTimeout(() => {

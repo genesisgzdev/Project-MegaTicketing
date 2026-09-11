@@ -3,7 +3,7 @@ import { config } from './config';
 
 // Handle Stripe constructor in ESM environment using validated config
 const stripe = new Stripe(config.STRIPE_SECRET_KEY, {
-  apiVersion: '2026-03-25.dahlia',
+  apiVersion: '2026-03-25.dahlia', timeout: 10000, maxNetworkRetries: 1,
 });
 
 const ZERO_DECIMAL_CURRENCIES = new Set(['bif', 'clp', 'djf', 'gnf', 'jpy', 'kmf', 'krw', 'mga', 'pyg', 'rwf', 'ugx', 'vnd', 'vuv', 'xaf', 'xof', 'xpf']);

@@ -18,7 +18,8 @@
     "test:api:integration": "RUN_INTEGRATION=true vitest run --config apps/api/vitest.config.ts",
     "load:test": "node scripts/concurrency-check.mjs",
     "security": "snyk test",
-    "prepare": "husky"
+    "prepare": "husky",
+    "db:migrate": "npm run db:migrate --workspace=@mega-ticketing/database"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.9.1",

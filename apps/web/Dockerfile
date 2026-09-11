@@ -1,16 +1,17 @@
-FROM node:22-slim AS build
-WORKDIR /usr/src/app
+FROM node:22-bookworm-slim AS build
+WORKDIR /app
 COPY package*.json ./
-COPY apps/web/package*.json ./apps/web/
-COPY packages/shared/package*.json ./packages/shared/
-# FIX: production dependency resolution bypass and ignore scripts to skip husky
-RUN npm install --legacy-peer-deps --ignore-scripts
+COPY apps/api/package.json apps/api/package.json
+COPY apps/web/package.json apps/web/package.json
+COPY packages/database/package.json packages/database/package.json
+COPY packages/shared/package.json packages/shared/package.json
+RUN npm ci --ignore-scripts
 COPY . .
-RUN npm run build --prefix apps/web
+ARG VITE_API_URL=/api
+ENV VITE_API_URL=$VITE_API_URL
+RUN npm run build --workspace=@mega-ticketing/web
 
-FROM nginx:stable-alpine AS runner
-COPY --from=build /usr/src/app/apps/web/dist /usr/share/nginx/html
+FROM nginx:stable-alpine AS runtime
+COPY --from=build /app/apps/web/dist /usr/share/nginx/html
 EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]
-
-

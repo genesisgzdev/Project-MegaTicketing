@@ -1,4 +1,4 @@
-﻿import { NodeSDK } from '@opentelemetry/sdk-node';
+import { NodeSDK } from '@opentelemetry/sdk-node';
 import { FastifyOtelInstrumentation } from '@fastify/otel';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-grpc';
 import { HttpInstrumentation } from '@opentelemetry/instrumentation-http';
@@ -33,12 +33,5 @@ try {
 } catch (error) {
   console.error('[TRACING] Error initializing OpenTelemetry SDK', error);
 }
-
-process.on('SIGTERM', () => {
-  sdk.shutdown()
-    .then(() => console.log('[TRACING] OpenTelemetry SDK shut down successfully'))
-    .catch((error) => console.error('[TRACING] Error shutting down OpenTelemetry SDK', error))
-    .finally(() => process.exit(0));
-});
 
 export default sdk;

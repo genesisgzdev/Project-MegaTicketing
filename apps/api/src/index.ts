@@ -1,4 +1,5 @@
-﻿import './tracing';
+import tracing from './tracing';
+import { setupGracefulShutdown } from './graceful-shutdown';
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
@@ -20,7 +21,9 @@ import { PubSubService } from './services/pubsub.service';
  * API Entrypoint.
  * Architecture: Controller/Service Pattern with Redis Locking.
  */
-const server = Fastify({ 
+const server = Fastify({
+  trustProxy: config.TRUST_PROXY ? config.TRUST_PROXY.split(',').map(value => value.trim()) : false,
+  requestTimeout: 30000,
   logger: {
     level: config.NODE_ENV === 'production' ? 'info' : 'debug'
   } 
@@ -49,7 +52,7 @@ server.register(rateLimit as any, {
  * Required for signature validation.
  */
 server.addContentTypeParser('application/json', { parseAs: 'buffer' }, (req, body, done) => {
-  if (req.url === '/webhook') {
+  if (req.url.split('?')[0] === '/webhook') {
     done(null, body);
   } else {
     try {
@@ -74,6 +77,7 @@ server.register(async (app) => {
 
   // REST Interface
   app.post('/reserve', (req, rep) => reservationController.handleReservation(req, rep));
+  app.get('/events', (req, rep) => seatmapController.listEvents(req, rep));
   app.get('/events/:eventId/seats', (req, rep) => seatmapController.listSeats(req, rep));
   app.post('/payments/intents', (req, rep) => paymentController.createIntent(req, rep));
   app.post('/webhook', (req, rep) => webhookController.handleStripeWebhook(req, rep));
@@ -86,7 +90,13 @@ setupHealthCheck(server, db, redis);
 // instance here, reservations remain durable in PostgreSQL but never reach
 // the stream. Each replica claims rows with SKIP LOCKED, so starting one
 // publisher per API process is safe.
-new PubSubService(server.log);
+const events = new PubSubService(server.log);
+server.addHook('onReady', () => events.start());
+server.addHook('onClose', async () => {
+  await events.stop();
+  await tracing.shutdown();
+});
+setupGracefulShutdown(server, db, redis);
 
 /**
  * Global Error Handler.

@@ -1,57 +1,104 @@
 import React, { useEffect, useMemo, useState } from 'react';
 
 type SeatStatus = 'available' | 'selected' | 'held' | 'sold';
-type Seat = { id: string; seatNumber: string; price: number; status: Exclude<SeatStatus, 'selected'> };
-
+type Seat = { id: string; seatNumber: string; price: number; currency: string; status: Exclude<SeatStatus, 'selected'> };
+type Event = { id: string; title: string };
 const classes: Record<SeatStatus, string> = {
-  available: 'bg-slate-700 border-slate-600 hover:bg-indigo-500/70 hover:border-indigo-300',
-  selected: 'bg-emerald-400 border-emerald-200 shadow-[0_0_18px_rgba(52,211,153,0.75)] scale-110',
+  available: 'bg-slate-700 border-slate-600 hover:bg-indigo-500/70',
+  selected: 'bg-emerald-400 border-emerald-200 scale-110',
   held: 'bg-amber-500/60 border-amber-300/80 cursor-not-allowed',
   sold: 'bg-rose-900/70 border-rose-700/80 cursor-not-allowed opacity-50',
 };
+const money = (value: number, currency: string) => new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(value);
 
 export default function CyberArena() {
-  const apiBase = import.meta.env.VITE_API_URL || 'http://localhost:3001';
-  const eventId = import.meta.env.VITE_EVENT_ID;
+  const apiBase = import.meta.env.VITE_API_URL || '/api';
+  const [events, setEvents] = useState<Event[]>([]);
+  const [eventId, setEventId] = useState<string>(import.meta.env.VITE_EVENT_ID || '');
   const [seats, setSeats] = useState<Seat[]>([]);
   const [selected, setSelected] = useState<string[]>([]);
-  const [state, setState] = useState<'loading' | 'ready' | 'empty' | 'error'>('loading');
-  const [message, setMessage] = useState('Loading live inventory…');
+  const [message, setMessage] = useState('Loading events…');
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    if (!eventId) {
-      setState('empty');
-      setMessage('Set VITE_EVENT_ID to load a real event inventory.');
-      return;
-    }
+    const controller = new AbortController();
+    const loadEvents = async () => {
+      const collected: Event[] = [];
+      let cursor: string | null = null;
+      do {
+        const response = await fetch(`${apiBase}/events${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`, { signal: controller.signal });
+        if (!response.ok) throw new Error('Events are unavailable.');
+        const payload = await response.json();
+        if (!Array.isArray(payload.events)) throw new Error('Invalid event response.');
+        collected.push(...payload.events);
+        if (payload.nextCursor === cursor && cursor) throw new Error('Event pagination did not advance.');
+        cursor = payload.nextCursor || null;
+      } while (cursor && !controller.signal.aborted);
+      if (controller.signal.aborted) return;
+      setEvents(collected);
+      setEventId(current => current || collected[0]?.id || '');
+      if (!collected.length) setMessage('No upcoming events are available.');
+    };
+    void loadEvents().catch(error => { if (!controller.signal.aborted) setMessage(error.message); });
+    return () => controller.abort();
+  }, [apiBase]);
+
+  useEffect(() => {
+    if (!eventId) return;
     let active = true;
+    let timer: ReturnType<typeof setTimeout>;
+    const controller = new AbortController();
+    setSeats([]); setSelected([]); setReady(false); setMessage('Loading inventory…');
     const refresh = async () => {
       try {
-        const response = await fetch(`${apiBase}/events/${eventId}/seats`);
-        if (!response.ok) throw new Error(`Inventory request failed (${response.status})`);
+        const response = await fetch(`${apiBase}/events/${encodeURIComponent(eventId)}/seats`, { signal: controller.signal });
+        if (!response.ok) throw new Error(`Inventory unavailable (${response.status}).`);
         const payload = await response.json();
-        if (active) { setSeats(payload.seats); setState('ready'); }
+        if (!Array.isArray(payload.seats)) throw new Error('Invalid inventory response.');
+        const next = payload.seats as Seat[];
+        if (active) {
+          setSeats(next);
+          setSelected(current => current.filter(id => next.some(seat => seat.id === id && seat.status === 'available')));
+          setReady(true);
+          setMessage(next.length ? '' : 'This event has no seats.');
+        }
       } catch (error) {
-        if (active) { setState('error'); setMessage(error instanceof Error ? error.message : 'Inventory unavailable'); }
-      }
+        if (active) { setReady(false); setSelected([]); setMessage(error instanceof Error ? error.message : 'Inventory unavailable.'); }
+      } finally { if (active) timer = setTimeout(refresh, 5000); }
     };
-    refresh();
-    const timer = window.setInterval(refresh, 5000);
-    return () => { active = false; window.clearInterval(timer); };
+    void refresh();
+    return () => { active = false; controller.abort(); clearTimeout(timer); };
   }, [apiBase, eventId]);
 
-  const total = useMemo(() => seats.filter((seat) => selected.includes(seat.id)).reduce((sum, seat) => sum + seat.price, 0), [seats, selected]);
-  const toggleSeat = (seat: Seat) => {
-    if (seat.status !== 'available') return;
-    setSelected((current) => current.includes(seat.id) ? current.filter((id) => id !== seat.id) : [...current, seat.id]);
-  };
+  const totals = useMemo(() => {
+    const sums: Record<string, number> = {};
+    for (const seat of seats) if (selected.includes(seat.id)) sums[seat.currency] = (sums[seat.currency] || 0) + seat.price;
+    return sums;
+  }, [seats, selected]);
 
-  return <div className="relative w-full bg-slate-900/50 rounded-[2rem] border border-white/5 shadow-2xl overflow-hidden p-6 lg:p-8">
-    <div className="mb-6 rounded-t-full border-t-4 border-indigo-300/80 bg-indigo-500/10 py-3 text-center text-[10px] font-black uppercase tracking-[0.5em] text-indigo-100">Live venue inventory</div>
-    {state === 'ready' && <div className="grid grid-cols-20 gap-1.5 max-w-full overflow-auto custom-scrollbar p-2" role="grid" aria-label="Live seat map">
-      {seats.map((seat) => { const status = selected.includes(seat.id) ? 'selected' : seat.status; return <button key={seat.id} type="button" className={`h-5 w-5 rounded-sm border transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-indigo-200 ${classes[status]}`} role="gridcell" aria-label={`${seat.seatNumber}, ${status}, $${seat.price}`} aria-pressed={selected.includes(seat.id)} disabled={seat.status !== 'available'} title={`${seat.seatNumber} · $${seat.price} · ${status}`} onClick={() => toggleSeat(seat)} />; })}
+  return <div className="w-full rounded-3xl border border-white/10 bg-slate-900/50 p-6 lg:p-8">
+    <label className="block mb-6 text-sm text-slate-300">Event
+      <select aria-label="Event" className="mt-2 block w-full rounded-lg bg-slate-800 p-3" value={eventId} onChange={event => setEventId(event.target.value)}>
+        {!events.length && <option value={eventId}>No event list available</option>}
+        {events.map(event => <option key={event.id} value={event.id}>{event.title}</option>)}
+      </select>
+    </label>
+    <div className="mb-6 border-t-4 border-indigo-300/80 py-3 text-center text-xs uppercase tracking-widest text-indigo-100">Live venue inventory</div>
+    {message && <p role="status" className="p-6 text-center text-slate-400">{message}</p>}
+    {ready && <div className="grid gap-2 p-2" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(2.5rem, 1fr))' }} aria-label="Live seat map">
+      {seats.map(seat => {
+        const status = selected.includes(seat.id) ? 'selected' : seat.status;
+        return <button key={seat.id} type="button" className={`h-10 rounded border text-xs focus:ring-2 focus:ring-indigo-200 ${classes[status]}`}
+          aria-label={`${seat.seatNumber}, ${status}, ${money(seat.price, seat.currency)}`} aria-pressed={status === 'selected'}
+          disabled={seat.status !== 'available'} onClick={() => setSelected(current => current.includes(seat.id) ? current.filter(id => id !== seat.id) : [...current, seat.id])}>
+          {seat.seatNumber}
+        </button>;
+      })}
     </div>}
-    {state !== 'ready' && <div className="rounded-2xl border border-white/10 bg-black/20 p-8 text-center text-sm text-slate-400">{message}</div>}
-    <div className="mt-6 flex flex-wrap items-center justify-between gap-4 text-xs text-slate-400"><div>{selected.length} selected · inventory refreshes every 5s</div><div className="font-mono text-lg font-black text-emerald-300">${total.toFixed(2)}</div></div>
+    <div className="mt-6 flex flex-wrap justify-between gap-4 text-xs text-slate-400">
+      <span>{selected.length} selected · availability refreshes every 5s</span>
+      <span>{Object.entries(totals).map(([currency, total]) => money(total, currency)).join(' + ')}</span>
+    </div>
+    <p className="mt-3 text-xs text-slate-500">Selection previews the price. Seats are held only after an authenticated reservation succeeds.</p>
   </div>;
 }

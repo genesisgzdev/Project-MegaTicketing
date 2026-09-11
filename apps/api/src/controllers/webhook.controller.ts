@@ -3,8 +3,9 @@ import { ReservationService } from '../services/reservation.service';
 import Stripe from 'stripe';
 import redis from '../redis';
 import { config } from '../config';
+import { randomUUID } from 'node:crypto';
 
-const stripe = new Stripe(config.STRIPE_SECRET_KEY, { apiVersion: '2026-03-25.dahlia' });
+const stripe = new Stripe(config.STRIPE_SECRET_KEY, { apiVersion: '2026-03-25.dahlia', timeout: 10000, maxNetworkRetries: 1 });
 
 export class WebhookController {
   private service: ReservationService;
@@ -39,7 +40,8 @@ export class WebhookController {
 
     // [SECURITY FIX] Atomic Idempotency Lock via Redis to prevent TOCTOU race conditions
     const idempotencyKey = `webhook:processed:${event.id}`;
-    const acquired = await redis.set(idempotencyKey, 'processing', 'PX', 10000, 'NX');
+    const owner = randomUUID();
+    const acquired = await redis.set(idempotencyKey, owner, 'PX', 30000, 'NX');
     if (!acquired) {
       this.app.log.warn({ eventId: event.id }, 'Concurrent webhook request detected or already processed');
       // A concurrent delivery may still be processing. A non-2xx response makes
@@ -48,7 +50,7 @@ export class WebhookController {
     }
 
     try {
-      const isPaymentEvent = event.type === 'checkout.session.completed' || event.type === 'payment_intent.succeeded';
+      const isPaymentEvent = event.type === 'payment_intent.succeeded';
       if (isPaymentEvent) {
         const payment = event.data.object as any;
         const { eventId, seatId } = payment.metadata || {};
@@ -69,25 +71,25 @@ export class WebhookController {
         const amountMinor = event.type === 'payment_intent.succeeded'
           ? payment.amount_received ?? payment.amount
           : payment.amount_total;
-        const currency = typeof payment.currency === 'string' ? payment.currency.toLowerCase() : undefined;
+        const currency = typeof payment.currency === 'string' ? payment.currency.toLowerCase() : '';
+        if (typeof paymentIntentId !== 'string' || !Number.isSafeInteger(amountMinor) || amountMinor <= 0 || !/^[a-z]{3}$/.test(currency)) {
+          return reply.status(400).send({ status: 'error', message: 'Payment confirmation is incomplete' });
+        }
         const outcome = await this.service.confirmReservation(eventId, seatId, event.id, {
           id: paymentIntentId,
           amountMinor,
           currency,
         });
-        if (outcome === 'expired') {
+        if (outcome === 'expired' || outcome === 'duplicate') {
           if (!paymentIntentId) throw new Error('Expired payment has no PaymentIntent id for refund');
           await this.refundIfPending(eventId, seatId, paymentIntentId);
         }
       } else if (await this.service.isEventProcessed(event.id)) {
         return reply.status(200).send({ received: true });
       }
-    } catch (error) {
-      await redis.del(idempotencyKey);
-      throw error;
     } finally {
-      // Processed events are retained by the durable idempotency marker.
-      // Failed events must be retryable by Stripe.
+      // Release only our lease: an expired handler cannot delete its successor.
+      await redis.eval("if redis.call('get',KEYS[1]) == ARGV[1] then return redis.call('del',KEYS[1]) else return 0 end", 1, idempotencyKey, owner);
     }
 
     return reply.status(200).send({ received: true });

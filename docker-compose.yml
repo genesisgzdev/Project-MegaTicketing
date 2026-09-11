@@ -27,7 +27,7 @@ services:
           cpus: '0.5'
           memory: 512M
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -36,6 +36,7 @@ services:
 
   redis:
     image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
     restart: unless-stopped
     volumes:
       - redis_data:/data
@@ -55,10 +56,24 @@ services:
     networks:
       - backend-net
 
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: migrate
+    environment:
+      DATABASE_URL: postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-development_password}@db:5432/${DB_NAME:-megaticketing}?schema=public
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - backend-net
+
   api:
     build:
       context: .
-      dockerfile: apps/api/Dockerfile
+      dockerfile: Dockerfile
+      target: runtime
     restart: unless-stopped
     deploy:
       replicas: 3
@@ -78,12 +93,17 @@ services:
       - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:?STRIPE_SECRET_KEY must be set}
       - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET:?STRIPE_WEBHOOK_SECRET must be set}
       - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set}
+      - JWT_ISSUER=${JWT_ISSUER:?JWT_ISSUER must be set}
+      - JWT_AUDIENCE=${JWT_AUDIENCE:?JWT_AUDIENCE must be set}
+      - TRUST_PROXY=uniquelocal
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost}
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     networks:
       - backend-net
 
@@ -108,7 +128,6 @@ services:
     restart: unless-stopped
     ports:
       - "80:80"
-      - "3001:80"
     volumes:
       - ./infra/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
     deploy:

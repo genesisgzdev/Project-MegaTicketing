@@ -6,6 +6,7 @@ import { setupIdempotency } from '../idempotency';
 import redis, { releaseSeat } from '../redis';
 import { db } from '../db';
 import { ReservationService } from '../services/reservation.service';
+import { PubSubService } from '../services/pubsub.service';
 import { config } from '../config';
 
 const integration = process.env.RUN_INTEGRATION === 'true' ? describe : describe.skip;
@@ -37,6 +38,7 @@ integration('PostgreSQL and Redis runtime gates', () => {
     }
     if (lockToken) await releaseSeat(eventId, seatId, lockToken);
     await db.outboxEvent.deleteMany({ where: { aggregateId: seatId } });
+    await db.paymentAttempt.deleteMany({ where: { seatId } });
     await db.ticket.deleteMany({ where: { seatId } });
     await db.seat.delete({ where: { id: seatId } });
     await db.event.delete({ where: { id: eventId } });
@@ -128,22 +130,22 @@ integration('PostgreSQL and Redis runtime gates', () => {
       data: {
         status: 'LOCKED',
         paidAt: null,
-        paymentIntentId: 'pi_integration',
+        paymentIntentId: 'pi_expired',
         paymentAmountMinor: 1000,
         paymentCurrency: 'usd',
       },
     });
 
     expect(await service.confirmReservation(eventId, seatId, `late-payment-${randomUUID()}`, {
-      id: 'pi_integration', amountMinor: 1000, currency: 'usd',
+      id: 'pi_expired', amountMinor: 1000, currency: 'usd',
     })).toBe('expired');
     expect((await db.ticket.findUnique({ where: { seatId } }))?.status).toBe('CANCELLED');
     expect((await db.seat.findUnique({ where: { id: seatId } }))?.isLocked).toBe(false);
 
-    const pendingRefund = await service.findPendingRefund(eventId, seatId, 'pi_integration');
+    const pendingRefund = await service.findPendingRefund(eventId, seatId, 'pi_expired');
     expect(pendingRefund).toEqual({ id: expect.any(String) });
     await service.markRefundCompleted(pendingRefund!.id, 're_integration');
-    expect(await service.findPendingRefund(eventId, seatId, 'pi_integration')).toBeNull();
+    expect(await service.findPendingRefund(eventId, seatId, 'pi_expired')).toBeNull();
 
     // Reusing the same Ticket row for a new buyer must clear the previous
     // Stripe binding. A late webhook for the old intent must not pay the new
@@ -153,9 +155,49 @@ integration('PostgreSQL and Redis runtime gates', () => {
     const recycledTicket = await db.ticket.findUnique({ where: { seatId } });
     expect(recycledTicket?.userId).toBe(secondUserId);
     expect(recycledTicket?.paymentIntentId).toBeNull();
-    await expect(service.confirmReservation(eventId, seatId, `old-payment-${randomUUID()}`, {
-      id: 'pi_integration', amountMinor: 1000, currency: 'usd',
-    })).rejects.toThrow(/binding/i);
+    expect(await service.confirmReservation(eventId, seatId, `old-payment-${randomUUID()}`, {
+      id: 'pi_expired', amountMinor: 1000, currency: 'usd',
+    })).toBe('duplicate');
     expect((await db.ticket.findUnique({ where: { seatId } }))?.status).toBe('LOCKED');
   });
+  it('refunds an old unconfirmed payment after the reservation changes owner', async () => {
+    const generation = await db.ticket.findUniqueOrThrow({ where: { seatId } });
+    expect(await service.bindPaymentIntent({ eventId, seatId, userId: secondUserId,
+      ticketId: generation.id, reservationCreatedAt: generation.createdAt,
+      id: 'pi_recycled', amountMinor: 1000, currency: 'usd' })).toBe(true);
+    // Retrying the same intent within its generation is successful.
+    expect(await service.bindPaymentIntent({ eventId, seatId, userId: secondUserId,
+      ticketId: generation.id, reservationCreatedAt: generation.createdAt,
+      id: 'pi_recycled', amountMinor: 1000, currency: 'usd' })).toBe(true);
+    if (lockToken) await releaseSeat(eventId, seatId, lockToken);
+    await db.seat.update({ where: { id: seatId }, data: { lockedAt: new Date(Date.now() - config.SEAT_LOCK_TTL_MS - 1000) } });
+    lockToken = await service.reserveSeat(eventId, seatId, userId);
+    expect(lockToken).toEqual(expect.any(String));
+    const deliveryId = `concurrent-${randomUUID()}`;
+    const outcomes = await Promise.all([1, 2].map(() => service.confirmReservation(eventId, seatId, deliveryId,
+      { id: 'pi_recycled', amountMinor: 1000, currency: 'usd' })));
+    expect(outcomes.sort()).toEqual(['duplicate', 'expired']);
+    const current = await db.ticket.findUniqueOrThrow({ where: { seatId } });
+    expect(current.userId).toBe(userId);
+    expect(current.status).toBe('LOCKED');
+    expect(current.paymentIntentId).toBeNull();
+    expect(await service.findPendingRefund(eventId, seatId, 'pi_recycled')).toEqual({ id: 'pi_recycled' });
+  });
+
+  it('publishes durable events while blocking consumption leaves Redis responsive, then stops', async () => {
+    const app = Fastify();
+    const worker = new PubSubService(app.log);
+    await worker.start();
+    try {
+      const started = Date.now();
+      await redis.ping();
+      expect(Date.now() - started).toBeLessThan(900);
+      await expect.poll(() => db.outboxEvent.count({ where: { aggregateId: seatId, publishedAt: null } }),
+        { timeout: 10000 }).toBe(0);
+      const rows = await db.outboxEvent.findMany({ where: { aggregateId: seatId } });
+      await expect.poll(() => db.processedOrderEvent.count({ where: { id: { in: rows.map(row => row.id) } } }),
+        { timeout: 10000 }).toBe(rows.length);
+    } finally { await worker.stop(); await app.close(); }
+  });
+
 });
