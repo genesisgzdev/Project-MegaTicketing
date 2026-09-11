@@ -1,111 +1,70 @@
-# MegaTicketing architecture
+# Cómo se confirma un asiento
 
-La arquitectura se entiende mejor separando disponibilidad, reserva, pago y operación. Cada flujo tiene una autoridad distinta y el frontend no decide estados de venta.
+La web muestra opciones. El servidor comprueba el acceso y la base de datos decide si una reserva puede guardarse. Cambiar un color en la pantalla nunca cambia el estado de una venta.
 
-## Cómo leerlo
+## Reserva y disponibilidad
 
-La primera figura ubica las dependencias. La segunda sigue una reserva que compite con otras. La tercera muestra los estados persistidos. PostgreSQL decide el ticket.
+```mermaid
+flowchart TD
+    A["La persona solicita un asiento"] --> B["Verificar acceso y disponibilidad"]
+    B --> C{"¿Se puede guardar la reserva?"}
+    C -- Sí --> D["Guardar asiento, reserva y evento juntos"]
+    C -- No --> E["Explicar que no se pudo reservar"]
+```
 
-## 1. Topología de ejecución
+La lista de eventos se consulta completa siguiendo la paginación. Los asientos se actualizan cada cinco segundos. La web permite buscar, quitar asientos y sumar importes por moneda. Una actualización retira de la selección los asientos que ya no están disponibles.
 
-~~~mermaid
-flowchart TB
-    WEB[React seat map] -->|seat polling| HTTP[Fastify API]
-    OPS[React operations] -->|health HTTP| HTTP
-    CLIENT[client with JWT] -->|reserve request| HTTP
-    HTTP --> CTX[request context and errors]
-    HTTP --> RL[Redis rate limit]
-    HTTP --> AUTH[JWT authentication]
-    AUTH --> FRAUD[fraud service]
-    FRAUD --> RES[reservation service]
-    RES -->|lock and release| R[(Redis keys)]
-    RES -->|database transaction| DB[(PostgreSQL)]
-    RES -->|same transaction| OUT[(PostgreSQL outbox)]
-    OUT -->|retryable publisher| ORD[Redis Streams consumer]
-    STRIPE[Stripe] -->|signed webhook| PAY[payment webhook]
-    PAY -->|paid state| DB
-    HTTP --> HEALTH[health readiness metrics]
-    HEALTH --> DB
-    HEALTH --> R
-~~~
+`GET /session` verifica el acceso del organizador. El navegador guarda temporalmente ese acceso en memoria y utiliza la identidad devuelta por el servidor. La firma, el vencimiento y la identidad se vuelven a comprobar al reservar. En producción se comprueban además emisor y audiencia.
 
-`CyberArena` consulta el inventario por HTTP y vuelve a pedirlo cada cinco segundos. El panel no muestra WAF, Kubernetes, región, detecciones de ataque ni eventos operativos porque la API no expone esas señales.
+Cada asiento se solicita por separado. La pantalla informa resultados parciales y no presenta un grupo como una reserva indivisible. Durante el envío impide cambios de evento y nuevos clics de reserva. Un reintento tras una respuesta incierta conserva su clave de solicitud.
 
-## 2. Reserva bajo concurrencia
+## Dos personas pueden elegir el mismo asiento
 
-~~~mermaid
-sequenceDiagram
-    participant C as client
-    participant API as ReservationController
-    participant A as auth and fraud
-    participant R as Redis nonce
-    participant PG as PostgreSQL transaction
-    participant O as PostgreSQL outbox
-    participant X as Redis order stream
-    C->>API: reserve event and seat
-    API->>API: Zod UUID validation
-    API->>A: authenticate and check fraud
-    A-->>API: allow or reject
-    API->>R: SET lock:event:seat NX PX
-    alt nonce lost
-      R-->>API: no token
-      API-->>C: 409
-    else nonce acquired
-    API->>PG: expire old locked ticket when needed
-      API->>PG: find user and seat
-      API->>PG: UPDATE Seat WHERE isLocked=false
-    API->>PG: create or update locked ticket
-      alt transaction fails
-        API->>R: Lua release with nonce
-        API-->>C: error or 409
-      else committed
-        API->>PG: INSERT outbox ticket.reserved
-        API-->>C: 201
-      end
-    end
-~~~
+Redis coordina las solicitudes que compiten mediante un bloqueo temporal. PostgreSQL conserva la decisión dentro de una transacción: comprueba el asiento, guarda la reserva y registra el evento pendiente de publicación.
 
-## 3. Estado persistido
+La base impone un ticket por asiento y un número único de asiento dentro de cada evento. Si la transacción falla, se intenta liberar únicamente el bloqueo que pertenece a esa solicitud. Redis no sustituye esas restricciones de base de datos.
 
-~~~mermaid
+La idempotencia reconoce una solicitud repetida por su clave, contenido e identidad. Reutilizar la misma clave para otro contenido o acceso produce un conflicto. Así un reintento no reutiliza por accidente la autorización de otra persona.
+
+## Una reserva todavía no es un pago
+
+```mermaid
 stateDiagram-v2
-    [*] --> available
-    available --> held: seat locked and ticket locked
-    held --> available: expiry or cancellation
-    held --> sold: signed payment success
-    held --> expired_payment: payment after expiry
-    expired_payment --> expired_payment: refund request retry
-    sold --> sold: duplicate webhook ignored
-    available --> available: failed reservation releases nonce
-~~~
+    Disponible --> Reservado: El servidor acepta la solicitud
+    Reservado --> Disponible: Vence el tiempo de reserva
+    Reservado --> Pagado: Llega un pago válido vinculado
+    Reservado --> ReembolsoPendiente: Llega un pago después del vencimiento
+    ReembolsoPendiente --> Reembolsado: El proveedor confirma la devolución
+```
 
-Después del commit, un publicador reclama hasta 50 filas `OutboxEvent` con `FOR UPDATE SKIP LOCKED` y una lease de 60 segundos antes de hacer `XADD`. Si el proceso muere antes de marcar la fila, otra réplica puede recuperar el claim vencido. Si muere después de `XADD` y antes del update, sigue siendo posible una entrega duplicada; el consumidor registra `outboxId` en `ProcessedOrderEvent` con una clave única antes del ACK para que esa republicación no vuelva a ejecutar el evento.
+El precio y la moneda pertenecen al asiento guardado. La API crea una intención de pago y la vincula a una generación concreta de reserva. Un cliente no puede cambiar la moneda para reinterpretar el importe.
 
-El consumidor no depende de posiciones fijas en el array de Redis: reconstruye el mapa de campos y extrae `payload`, con fallback para el formato antiguo. Los fallos del webhook devuelven un estado no exitoso para que Stripe reprograme la entrega; el evento queda registrado en PostgreSQL dentro de la transacción que aplica la transición de pago. Redis no actúa como cola durable de pagos.
+El aviso firmado de Stripe comprueba pago, importe, moneda e identidad de la reserva antes de marcarla como pagada. Un pago tardío no se asigna al siguiente comprador del asiento. `PaymentAttempt` conserva la identidad anterior y permite reintentar el reembolso con una clave estable.
 
-PostgreSQL tiene `Ticket.seatId UNIQUE` y `Seat @@unique([eventId, seatNumber])`. Redis coordina la carrera, pero no es la autoridad del ticket. Stripe confirma el pago; no crea disponibilidad.
+Los avisos ya procesados se registran en PostgreSQL. Las entregas repetidas no vuelven a cobrar ni convierten una reserva cancelada en pagada. La confirmación del reembolso se copia al ticket actual solo si todavía corresponde a ese pago.
 
-La idempotencia HTTP se calcula en `preValidation`, cuando el body ya está parseado. La huella ordena las claves JSON y liga el resultado al bearer presentado; por eso el mismo `Idempotency-Key` con otro body o identidad devuelve conflicto y no salta la autenticación de la ruta. La autenticación JWT exige `sub` y `exp`; en producción también exige issuer y audience.
+La pantalla de este repositorio confirma reservas, pero todavía no integra el formulario de pago ni emite entradas. Esas acciones necesitan conectarse al contrato del servidor.
 
-Un `payment_intent.succeeded` posterior a la expiración queda registrado como evento procesado, mantiene el ticket cancelado y solicita un refund con una clave idempotente. Antes de cualquier transición a `PAID`, el webhook debe encontrar el `PaymentIntent`, importe y moneda ya vinculados al ticket; si la entrega llega durante la ventana entre Stripe y PostgreSQL, falla de forma retryable. No existe una transición `CANCELLED -> PAID`.
+## Publicar lo ocurrido sin perder la transacción
 
-La expiración se comprueba dentro de la misma transacción que procesa el webhook usando `Seat.lockedAt`; no depende de que otra reserva haya pasado antes por el asiento para limpiar el lock. El ticket conserva `refundId` después de un refund confirmado. Si el proceso cae entre `CANCELLED` y la llamada o confirmación del refund, una entrega posterior busca el ticket cancelado sin `refundId` y reintenta con una clave derivada del `PaymentIntent`, no del evento concreto.
+El evento de reserva se guarda con el ticket en una tabla de pendientes, llamada outbox. Un publicador reclama filas con una concesión temporal y las envía a Redis Streams. Otra réplica puede recuperar una concesión vencida.
 
-El precio persistido en `Seat` incluye su moneda. La API no permite que el cliente reinterprete un importe en otra moneda; el `PaymentIntent`, el importe en unidades menores y la moneda quedan asociados al ticket. La transición a `PAID` comprueba esa asociación cuando Stripe entrega el webhook.
+Puede producirse una entrega duplicada si el proceso se interrumpe después de publicar y antes de marcar la fila. El consumidor registra `outboxId` en `ProcessedOrderEvent` antes de confirmar. Ese consumidor registra eventos; no envía entradas, correos ni liquida pagos.
 
-La idempotencia al crear un PaymentIntent también incluye la generación de la reserva (`Ticket.id` y `Ticket.createdAt`). Esto evita que el reciclaje de una fila después de una expiración reabra el PaymentIntent de una reserva anterior.
+## Encontrar cada responsabilidad
 
-Cuando un asiento expirado se recicla para otro usuario, la transacción limpia el `PaymentIntent`, importe, moneda, `paidAt` y `refundId` del ticket reutilizado. Un webhook tardío del comprador anterior encuentra un binding ausente y no puede convertir la nueva reserva en `PAID`.
+| Archivo o carpeta | Qué contiene |
+| --- | --- |
+| `apps/web/src/CyberArena.tsx` | Catálogo, selección, acceso y reserva |
+| `apps/api/src/auth.ts` | Verificación de la identidad firmada |
+| `apps/api/src/controllers` | Contratos de cada petición |
+| `apps/api/src/services/reservation.service.ts` | Reserva persistida y asociación del pago |
+| `packages/database/prisma` | Tablas, restricciones y migraciones |
+| `apps/api/src/services/pubsub.service.ts` | Publicación y consumo de eventos |
+| `infra` | Configuración de despliegue |
 
-Si Stripe entrega más de un tipo de evento para el mismo pago, un ticket que ya está `PAID` se considera repetición y no vuelve al camino de expiración ni solicita un refund.
+`/health/live` indica que el proceso responde. `/health/ready` comprueba PostgreSQL y Redis. La pantalla del comprador evita presentar métricas internas como si fueran parte de elegir una entrada.
 
-Los IDs de webhooks procesados también quedan en PostgreSQL con una clave única. Redis mantiene el lock breve de entrada; no guarda el único registro de un pago.
+CI ejecuta compilación, auditoría de dependencias y pruebas web y de API. Las integraciones usan PostgreSQL y Redis reales y comprueban carreras, pagos tardíos e idempotencia. Las pruebas con sustitutos del proveedor verifican contratos y no realizan cobros externos. Los archivos de infraestructura se validan, pero eso no demuestra que exista una instalación pública.
 
-## 4. Operación y límites
-
-- `/health` devuelve estado de database, Redis y heap; `/health/ready` exige query SQL y `PING` Redis.
-- `PubSubService` publica outbox pendientes, consume y recupera mensajes pendientes del stream `stream:orders:reserved`; hoy el consumidor registra y hace ACK, no es un procesador externo de fulfillment.
-- La presión del evento se registra como señal operativa. El bloqueo de fraude se calcula por actor y ventana, no por el total de compradores de un evento.
-- No existe un estado `defenseActive` ni un canal WebSocket en el runtime. Los controles de defensa no forman parte de esta aplicación.
-- Docker, Kubernetes, Terraform, Nginx y Cloudflare son superficies de despliegue configuradas en el repo, no prueba de una cuenta cloud desplegada.
-- `npm run load:test` necesita API, PostgreSQL, Redis y UUIDs sembrados. El resultado válido es exactamente un `201`, cero `5xx` e invariant safe.
+[Guía de uso](USO.md) · [Preparar el despliegue](DEPLOYMENT_PREFLIGHT.md) · [Mapa de archivos](REPOSITORY_MAP.md)

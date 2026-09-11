@@ -1,12 +1,12 @@
 # Mapa del repositorio
 
-Revisión de estructura y flujos: 2026-09-11. Este inventario cubre los archivos versionados y las incorporaciones de esta revisión; excluye dependencias instaladas y artefactos de build. Los límites de validación aparecen por área.
+Usa este índice cuando quieras encontrar una parte del proyecto. Para empezar a usarlo, vuelve al [README](../README.md). Los archivos generados al compilar y las dependencias instaladas quedan fuera del mapa.
 
-## Flujos y fronteras
+## Qué hace cada parte
 
-| Área | Recorrido real | Verificación / límite |
+| Área | Recorrido | Qué conviene comprobar |
 | --- | --- | --- |
-| Web | React → GET /events paginado → GET /events/:eventId/seats | Inventario HTTP, moneda por asiento, selección local; no incluye login ni checkout completo |
+| Web | React → GET /events paginado → GET /events/:eventId/seats | Inventario, selección y reserva con acceso validado por /session; no incluye cuentas ni pago completo |
 | Acceso | configuración → JWT con exp/sub e issuer/audience en producción → controladores | Bypass de pruebas solo en NODE_ENV=test |
 | Reserva | Redis lease → transacción PostgreSQL con bloqueo de Seat → Ticket y OutboxEvent | PostgreSQL decide la venta; Redis reduce contención |
 | Pago | generación de reserva → Stripe PaymentIntent → PaymentAttempt durable | Reintento del mismo intent válido; identidad sobrevive al reciclado de Ticket |
@@ -131,3 +131,4 @@ Los módulos game-state/HealthController/HealthService, metrics.ts, redis-enhanc
 | [scripts/concurrency-check.mjs](../scripts/concurrency-check.mjs) | Módulo: concurrency-check |
 | [tsconfig.json](../tsconfig.json) | Configuración/metadata: tsconfig.json |
 | [turbo.json](../turbo.json) | Configuración/metadata: turbo.json |
+| [docs/USO.md](../docs/USO.md) | Guía de selección, acceso y reserva de asientos |
