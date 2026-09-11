@@ -49,9 +49,15 @@ integration('PostgreSQL and Redis runtime gates', () => {
   });
 
   it('enforces single-seat reservation with PostgreSQL authority and Redis lock', async () => {
-    lockToken = await service.reserveSeat(eventId, seatId, userId);
-    expect(lockToken).toEqual(expect.any(String));
-    expect(await service.reserveSeat(eventId, seatId, userId)).toBeNull();
+    const attempts = await Promise.all(Array.from({ length: 32 }, () => service.reserveSeat(eventId, seatId, userId)));
+    const winners = attempts.filter((token): token is string => token !== null);
+    expect(winners).toHaveLength(1);
+    lockToken = winners[0];
+    // Lose this test seat's Redis lease: PostgreSQL must still reject a
+    // competing owner while the persisted reservation remains valid.
+    await redis.del(`lock:${eventId}:${seatId}`);
+    const afterLeaseLoss = await Promise.all(Array.from({ length: 16 }, () => service.reserveSeat(eventId, seatId, secondUserId)));
+    expect(afterLeaseLoss.every(token => token === null)).toBe(true);
 
     const ticket = await db.ticket.findUnique({ where: { seatId } });
     expect(ticket?.status).toBe('LOCKED');
