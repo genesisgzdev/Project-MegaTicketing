@@ -16,6 +16,7 @@ import { SeatmapController } from './controllers/seatmap.controller';
 import { PaymentController } from './controllers/payment.controller';
 import { setupIdempotency } from './idempotency';
 import { PubSubService } from './services/pubsub.service';
+import { authenticatedSubject } from './auth';
 
 /**
  * API Entrypoint.
@@ -76,6 +77,12 @@ server.register(async (app) => {
   const paymentController = new PaymentController();
 
   // REST Interface
+  app.get('/session', async (req, rep) => {
+    rep.header('Cache-Control', 'no-store');
+    const userId = await authenticatedSubject(req);
+    if (!userId) return rep.status(401).send({ message: 'Authentication required' });
+    return rep.send({ userId });
+  });
   app.post('/reserve', (req, rep) => reservationController.handleReservation(req, rep));
   app.get('/events', (req, rep) => seatmapController.listEvents(req, rep));
   app.get('/events/:eventId/seats', (req, rep) => seatmapController.listSeats(req, rep));

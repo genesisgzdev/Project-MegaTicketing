@@ -4,8 +4,13 @@ import { config } from './config';
 
 export async function authenticateUser(request: FastifyRequest, userId: string): Promise<boolean> {
   if (config.NODE_ENV === 'test' && config.AUTH_TEST_BYPASS) return true;
+  return (await authenticatedSubject(request)) === userId;
+}
+
+/** Return the identity only after verifying the organizer's signed access. */
+export async function authenticatedSubject(request: FastifyRequest): Promise<string | null> {
   const authorization = request.headers.authorization;
-  if (!authorization?.startsWith('Bearer ')) return false;
+  if (!authorization?.startsWith('Bearer ')) return null;
 
   try {
     const { payload } = await jwtVerify(
@@ -19,8 +24,8 @@ export async function authenticateUser(request: FastifyRequest, userId: string):
         ...(config.JWT_AUDIENCE ? { audience: config.JWT_AUDIENCE } : {}),
       },
     );
-    return typeof payload.sub === 'string' && payload.sub === userId;
+    return typeof payload.sub === 'string' ? payload.sub : null;
   } catch {
-    return false;
+    return null;
   }
 }

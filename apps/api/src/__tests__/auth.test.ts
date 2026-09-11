@@ -67,3 +67,18 @@ describe('JWT authentication claims', () => {
     await expect(authenticateUser(request as never, subject)).resolves.toBe(false);
   });
 });
+
+it('returns only a verified subject for the session endpoint', async () => {
+  testEnv();
+  const { authenticatedSubject } = await import('../auth?session');
+  const request = { headers: { authorization: `Bearer ${await token({ expiry: '2h' })}` } };
+  await expect(authenticatedSubject(request as never)).resolves.toBe(subject);
+  await expect(authenticatedSubject({ headers: { authorization: 'Bearer unsigned' } } as never)).resolves.toBeNull();
+});
+
+it('does not apply the test reservation bypass to session identities', async () => {
+  testEnv();
+  process.env.AUTH_TEST_BYPASS = 'true';
+  const { authenticatedSubject } = await import('../auth?session-bypass');
+  await expect(authenticatedSubject({ headers: {} } as never)).resolves.toBeNull();
+});
