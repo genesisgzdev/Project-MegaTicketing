@@ -1,0 +1,6 @@
+apiVersion: v2
+name: megaticketing
+description: Chart de validacion para MegaTicketing. CI hace lint; ningun workflow aplica el release.
+type: application
+version: 0.1.0
+appVersion: "2.1.4"

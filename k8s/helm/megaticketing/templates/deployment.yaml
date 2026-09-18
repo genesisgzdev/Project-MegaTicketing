@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ticketing-api
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: api
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: api
+  template:
+    metadata:
+      labels:
+        app: api
+    spec:
+      serviceAccountName: {{ .Values.serviceAccountName }}
+      automountServiceAccountToken: false
+      containers:
+        - name: api
+          image: {{ required "image must be an immutable digest reference" .Values.image | quote }}
+          ports:
+            - containerPort: 3001
+          envFrom:
+            - secretRef:
+                name: {{ .Values.runtimeSecretName }}
+          livenessProbe:
+            httpGet:
+              path: {{ .Values.health.livePath }}
+              port: 3001
+          readinessProbe:
+            httpGet:
+              path: {{ .Values.health.readyPath }}
+              port: 3001
