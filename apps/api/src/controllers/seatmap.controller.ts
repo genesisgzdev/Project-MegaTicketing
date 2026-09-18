@@ -1,4 +1,5 @@
 import { FastifyReply, FastifyRequest } from 'fastify';
+import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { db } from '../db';
 import { config } from '../config';
@@ -42,21 +43,37 @@ export class SeatmapController {
       },
     });
     const lockExpiry = Date.now() - config.SEAT_LOCK_TTL_MS;
+    const mapped = seats.map((seat) => ({
+      id: seat.id,
+      seatNumber: seat.seatNumber,
+      price: Number(seat.price),
+      currency: seat.currency,
+      status: seat.ticket?.status === 'PAID'
+        ? 'sold'
+        : seat.isLocked && seat.lockedAt && seat.lockedAt.getTime() > lockExpiry
+          ? 'held'
+          : 'available',
+    }));
+    const generation = createHash('sha256')
+      .update(mapped.map((seat) => `${seat.id}:${seat.status}`).join('|'))
+      .digest('hex');
+    const etag = `"${generation}"`;
+    if (request.headers['if-none-match'] === etag) {
+      reply.header('ETag', etag);
+      reply.header('X-Inventory-Generation', generation);
+      reply.header('Cache-Control', 'public, max-age=2');
+      return reply.status(304).send();
+    }
 
-    return reply.send({
-      event,
-      seats: seats.map((seat) => ({
-        id: seat.id,
-        seatNumber: seat.seatNumber,
-        price: Number(seat.price),
-        currency: seat.currency,
-        status: seat.ticket?.status === 'PAID'
-          ? 'sold'
-          : seat.isLocked && seat.lockedAt && seat.lockedAt.getTime() > lockExpiry
-            ? 'held'
-            : 'available',
-      })),
-      generatedAt: new Date().toISOString(),
-    });
+    return reply
+      .header('ETag', etag)
+      .header('X-Inventory-Generation', generation)
+      .header('Cache-Control', 'public, max-age=2')
+      .send({
+        event,
+        seats: mapped,
+        generatedAt: new Date().toISOString(),
+        generation,
+      });
   }
 }
