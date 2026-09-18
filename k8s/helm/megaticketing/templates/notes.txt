@@ -1,0 +1,3 @@
+Este chart solo se valida con helm lint.
+applyEnabled={{ .Values.promotion.applyEnabled }}
+No hay hook de instalacion. Un release real exige imagen con digest, secreto externo observado y aprobacion de ambiente.

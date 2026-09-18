@@ -1,0 +1,15 @@
+image: "example.invalid/megaticketing-api@sha256:0000000000000000000000000000000000000000000000000000000000000000"
+namespace: megaticketing-prod
+serviceAccountName: megaticketing-api
+runtimeSecretName: megaticketing-runtime
+replicaCount: 3
+promotion:
+  environments:
+    - name: staging
+      requiresApproval: true
+    - name: prod
+      requiresApproval: true
+  applyEnabled: false
+health:
+  livePath: /health/live
+  readyPath: /health/ready
